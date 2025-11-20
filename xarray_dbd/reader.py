@@ -3,20 +3,21 @@ Efficient DBD file reader
 """
 
 import struct
-import numpy as np
-from pathlib import Path
-from typing import BinaryIO, Dict, List, Optional, Tuple, Union
 import warnings
+from pathlib import Path
+from typing import Any, BinaryIO
 
+import numpy as np
+
+from .decompression import open_dbd_file
 from .header import DBDHeader
 from .sensor import DBDSensor, DBDSensors
-from .decompression import open_dbd_file
 
 
 class KnownBytes:
     """Handles endianness detection from known bytes section"""
 
-    def __init__(self, fp: BinaryIO, data: Optional[bytes] = None):
+    def __init__(self, fp: BinaryIO, data: bytes | None = None):
         """Read and detect endianness
 
         The known bytes section consists of:
@@ -43,20 +44,20 @@ class KnownBytes:
 
         # Read tag
         tag = all_data[0:1]
-        if not tag or tag[0] != ord('s'):
-            raise ValueError(f"Invalid known bytes tag: expected 's', got {tag}")
+        if not tag or tag[0] != ord("s"):
+            raise ValueError(f"Invalid known bytes tag: expected 's', got {tag!r}")
 
         # Read 'a' byte
         byte_a = all_data[1:2]
-        if not byte_a or byte_a[0] != ord('a'):
-            raise ValueError(f"Invalid known bytes: expected 'a', got {byte_a}")
+        if not byte_a or byte_a[0] != ord("a"):
+            raise ValueError(f"Invalid known bytes: expected 'a', got {byte_a!r}")
 
         # Read int16 for endianness detection
         int16_bytes = all_data[2:4]
 
         # Try little endian first
-        int16_le = struct.unpack('<h', int16_bytes)[0]
-        int16_be = struct.unpack('>h', int16_bytes)[0]
+        int16_le = struct.unpack("<h", int16_bytes)[0]
+        int16_be = struct.unpack(">h", int16_bytes)[0]
 
         if int16_le == 0x1234:
             self.flip_bytes = False
@@ -68,7 +69,7 @@ class KnownBytes:
         # Read and validate float32
         float32_bytes = all_data[4:8]
 
-        fmt = '>f' if self.flip_bytes else '<f'
+        fmt = ">f" if self.flip_bytes else "<f"
         float32_val = struct.unpack(fmt, float32_bytes)[0]
         if abs(float32_val - 123.456) > 0.001:
             raise ValueError(f"Invalid known bytes float: {float32_val}")
@@ -76,7 +77,7 @@ class KnownBytes:
         # Read and validate float64
         float64_bytes = all_data[8:16]
 
-        fmt = '>d' if self.flip_bytes else '<d'
+        fmt = ">d" if self.flip_bytes else "<d"
         float64_val = struct.unpack(fmt, float64_bytes)[0]
         if abs(float64_val - 123456789.12345) > 0.001:
             raise ValueError(f"Invalid known bytes double: {float64_val}")
@@ -89,12 +90,15 @@ class KnownBytes:
 class DBDReader:
     """Efficient reader for DBD files - reads all data into memory for speed"""
 
-    def __init__(self, filename: Union[str, Path],
-                 skip_first_record: bool = True,
-                 repair: bool = False,
-                 to_keep: Optional[List[str]] = None,
-                 criteria: Optional[List[str]] = None,
-                 cache_dir: Optional[Union[str, Path]] = None):
+    def __init__(
+        self,
+        filename: str | Path,
+        skip_first_record: bool = True,
+        repair: bool = False,
+        to_keep: list[str] | None = None,
+        criteria: list[str] | None = None,
+        cache_dir: str | Path | None = None,
+    ):
         """Initialize DBD reader and load all data
 
         Args:
@@ -110,15 +114,11 @@ class DBDReader:
         self.repair = repair
 
         # Determine cache directory
-        if cache_dir is None:
-            # Look for cache subdirectory next to file
-            cache_dir = self.filename.parent / "cache"
-        else:
-            cache_dir = Path(cache_dir)
+        cache_dir = self.filename.parent / "cache" if cache_dir is None else Path(cache_dir)
         self.cache_dir = cache_dir
 
         # Read entire file in one pass
-        with open_dbd_file(self.filename, 'rb') as fp:
+        with open_dbd_file(self.filename, "rb") as fp:
             # Read header
             self.header = DBDHeader(fp, str(self.filename))
             if self.header.is_empty():
@@ -136,7 +136,7 @@ class DBDReader:
             # Read all data immediately (speed over memory)
             self.data, self.metadata = self._read_all_data(fp)
 
-    def _read_sensors(self, fp: BinaryIO) -> Tuple[DBDSensors, Optional[bytes]]:
+    def _read_sensors(self, fp: BinaryIO) -> tuple[DBDSensors, bytes | None]:
         """Read sensor list from file or cache
 
         Returns:
@@ -154,10 +154,10 @@ class DBDReader:
 
             if cache_file.exists():
                 # Read from cache (only available sensors!)
-                with open(cache_file, 'r') as cf:
+                with open(cache_file) as cf:
                     for line in cf:
                         line = line.strip()
-                        if line.startswith('s:'):
+                        if line.startswith("s:"):
                             sensor = DBDSensor(line)
                             # Only add available sensors (marked with 'T')
                             if sensor.available:
@@ -169,11 +169,11 @@ class DBDReader:
                     byte = fp.read(1)
                     if not byte:
                         break
-                    if byte == b's':
+                    if byte == b"s":
                         # This might be start of known bytes
                         # Read the next 15 bytes to make 16 total
                         peek = fp.read(15)
-                        if len(peek) >= 1 and peek[0] == ord('a'):
+                        if len(peek) >= 1 and peek[0] == ord("a"):
                             # Looks like known bytes!
                             known_bytes_data = byte + peek
                             break
@@ -181,29 +181,27 @@ class DBDReader:
 
                 # Note: we only load available sensors, so count may be less than total
                 if len(sensors) == 0:
-                    warnings.warn(
-                        f"No available sensors found in cache {cache_file}"
-                    )
+                    warnings.warn(f"No available sensors found in cache {cache_file}", stacklevel=2)
 
                 return sensors, known_bytes_data
             else:
                 warnings.warn(
-                    f"Sensor list is factored but cache file {cache_file} not found"
+                    f"Sensor list is factored but cache file {cache_file} not found", stacklevel=2
                 )
                 # Fall through to read from file
 
         # Read sensor list from file
         for _ in range(num_sensors):
-            line = fp.readline()
-            if not line:
+            line_bytes = fp.readline()
+            if not line_bytes:
                 break
 
             try:
-                line = line.decode('ascii').strip()
+                line = line_bytes.decode("ascii").strip()
             except UnicodeDecodeError:
                 break
 
-            if not line.startswith('s:'):
+            if not line.startswith("s:"):
                 break
 
             sensor = DBDSensor(line)
@@ -211,12 +209,13 @@ class DBDReader:
 
         if len(sensors) != num_sensors:
             warnings.warn(
-                f"Expected {num_sensors} sensors, found {len(sensors)} in {self.filename}"
+                f"Expected {num_sensors} sensors, found {len(sensors)} in {self.filename}",
+                stacklevel=2,
             )
 
         return sensors, known_bytes_data
 
-    def _read_all_data(self, fp: BinaryIO) -> Tuple[np.ndarray, Dict[str, any]]:
+    def _read_all_data(self, fp: BinaryIO) -> tuple[np.ndarray, dict[str, Any]]:
         """Read all data from current file position
 
         Args:
@@ -253,11 +252,11 @@ class DBDReader:
             tag = tag_byte[0]
 
             # Check for end tag
-            if tag == ord('X'):
+            if tag == ord("X"):
                 break
 
             # Check for data tag
-            if tag != ord('d'):
+            if tag != ord("d"):
                 # Unexpected tag - search for next 'd'
                 # Allow limited search at start (padding), unlimited in repair mode
                 search_limit = None if self.repair else (1000 if n_records == 0 else 0)
@@ -269,8 +268,8 @@ class DBDReader:
                     if not byte:
                         break
                     search_count += 1
-                    if byte[0] == ord('d'):
-                        tag = ord('d')
+                    if byte[0] == ord("d"):
+                        tag = ord("d")
                         found = True
                         break
 
@@ -333,18 +332,18 @@ class DBDReader:
 
         # Build metadata
         metadata = {
-            'filename': str(self.filename),
-            'mission_name': self.header.mission_name,
-            'fileopen_time': self.header.fileopen_time,
-            'encoding_version': self.header.encoding_version,
-            'full_filename': self.header.full_filename,
-            'sensor_list_crc': self.header.sensor_list_crc,
-            'n_records': n_records,
+            "filename": str(self.filename),
+            "mission_name": self.header.mission_name,
+            "fileopen_time": self.header.fileopen_time,
+            "encoding_version": self.header.encoding_version,
+            "full_filename": self.header.full_filename,
+            "sensor_list_crc": self.header.sensor_list_crc,
+            "n_records": n_records,
         }
 
         return data, metadata
 
-    def read_data(self) -> Tuple[np.ndarray, Dict[str, any]]:
+    def read_data(self) -> tuple[np.ndarray, dict[str, Any]]:
         """Get the already-loaded data
 
         Returns:
@@ -352,28 +351,28 @@ class DBDReader:
         """
         return self.data, self.metadata
 
-    def get_sensor_metadata(self) -> Dict[str, Dict[str, any]]:
+    def get_sensor_metadata(self) -> dict[str, dict[str, Any]]:
         """Get metadata for all output sensors"""
         metadata = {}
         for sensor in self.sensors.get_output_sensors():
             metadata[sensor.name] = {
-                'units': sensor.units,
-                'size': sensor.size,
-                'dtype': str(sensor.dtype),
+                "units": sensor.units,
+                "size": sensor.size,
+                "dtype": str(sensor.dtype),
             }
         return metadata
 
 
 def read_multiple_dbd_files(
-    filenames: List[Union[str, Path]],
+    filenames: list[str | Path],
     skip_first_record: bool = True,
     repair: bool = False,
-    to_keep: Optional[List[str]] = None,
-    criteria: Optional[List[str]] = None,
-    skip_missions: Optional[List[str]] = None,
-    keep_missions: Optional[List[str]] = None,
-    cache_dir: Optional[Union[str, Path]] = None,
-) -> Tuple[np.ndarray, List[str], Dict[str, Dict]]:
+    to_keep: list[str] | None = None,
+    criteria: list[str] | None = None,
+    skip_missions: list[str] | None = None,
+    keep_missions: list[str] | None = None,
+    cache_dir: str | Path | None = None,
+) -> tuple[np.ndarray, list[str], dict[str, Any]]:
     """Read multiple DBD files and concatenate
 
     Args:
@@ -388,8 +387,8 @@ def read_multiple_dbd_files(
     Returns:
         Tuple of (data, sensor_names, metadata)
     """
-    skip_set = set(m.lower() for m in skip_missions) if skip_missions else None
-    keep_set = set(m.lower() for m in keep_missions) if keep_missions else None
+    skip_set = {m.lower() for m in skip_missions} if skip_missions else None
+    keep_set = {m.lower() for m in keep_missions} if keep_missions else None
 
     all_data = []
     sensor_names = None
@@ -403,7 +402,7 @@ def read_multiple_dbd_files(
                 repair=repair,
                 to_keep=to_keep,
                 criteria=criteria,
-                cache_dir=cache_dir
+                cache_dir=cache_dir,
             )
 
             # Check mission filter
@@ -424,7 +423,7 @@ def read_multiple_dbd_files(
             file_metadata.append(metadata)
 
         except Exception as e:
-            warnings.warn(f"Error reading {filename}: {e}")
+            warnings.warn(f"Error reading {filename}: {e}", stacklevel=2)
             continue
 
     if not all_data:
@@ -435,9 +434,9 @@ def read_multiple_dbd_files(
 
     # Combine metadata
     combined_metadata = {
-        'files': file_metadata,
-        'total_records': len(combined_data),
-        'n_files': len(file_metadata),
+        "files": file_metadata,
+        "total_records": len(combined_data),
+        "n_files": len(file_metadata),
     }
 
-    return combined_data, sensor_names, combined_metadata
+    return combined_data, sensor_names, combined_metadata  # type: ignore[return-value]

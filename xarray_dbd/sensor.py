@@ -3,8 +3,9 @@ Sensor metadata and collections for DBD files
 """
 
 import struct
+from typing import BinaryIO
+
 import numpy as np
-from typing import BinaryIO, Dict, List, Optional
 
 
 class DBDSensor:
@@ -17,10 +18,10 @@ class DBDSensor:
         Example: s: T 0 0 8 m_present_time timestamp
         """
         parts = line.split()
-        if len(parts) < 7 or parts[0] != 's:':
+        if len(parts) < 7 or parts[0] != "s:":
             raise ValueError(f"Invalid sensor line: {line}")
 
-        self.available = parts[1] == 'T'
+        self.available = parts[1] == "T"
         self.file_index = int(parts[2])
         self.storage_index = int(parts[3])
         self.size = int(parts[4])
@@ -30,19 +31,19 @@ class DBDSensor:
         # Will be set later during sensor mapping
         self.keep = True
         self.criteria = True
-        self.output_index = None
+        self.output_index: int | None = None
 
     @property
     def dtype(self) -> np.dtype:
         """Get numpy dtype for this sensor"""
         if self.size == 1:
-            return np.dtype('int8')
+            return np.dtype("int8")
         elif self.size == 2:
-            return np.dtype('int16')
+            return np.dtype("int16")
         elif self.size == 4:
-            return np.dtype('float32')
+            return np.dtype("float32")
         elif self.size == 8:
-            return np.dtype('float64')
+            return np.dtype("float64")
         else:
             raise ValueError(f"Unsupported sensor size: {self.size}")
 
@@ -53,15 +54,15 @@ class DBDSensor:
             raise EOFError(f"Expected {self.size} bytes, got {len(data)}")
 
         if self.size == 1:
-            return float(struct.unpack('b', data)[0])
+            return float(struct.unpack("b", data)[0])
         elif self.size == 2:
-            fmt = '>h' if flip_bytes else '<h'
+            fmt = ">h" if flip_bytes else "<h"
             return float(struct.unpack(fmt, data)[0])
         elif self.size == 4:
-            fmt = '>f' if flip_bytes else '<f'
+            fmt = ">f" if flip_bytes else "<f"
             return struct.unpack(fmt, data)[0]
         elif self.size == 8:
-            fmt = '>d' if flip_bytes else '<d'
+            fmt = ">d" if flip_bytes else "<d"
             return struct.unpack(fmt, data)[0]
         else:
             raise ValueError(f"Unsupported size: {self.size}")
@@ -74,9 +75,9 @@ class DBDSensors:
     """Collection of sensors for a DBD file"""
 
     def __init__(self):
-        self.sensors: List[DBDSensor] = []
-        self._by_name: Dict[str, DBDSensor] = {}
-        self._by_file_index: Dict[int, DBDSensor] = {}
+        self.sensors: list[DBDSensor] = []
+        self._by_name: dict[str, DBDSensor] = {}
+        self._by_file_index: dict[int, DBDSensor] = {}
 
     def add(self, sensor: DBDSensor):
         """Add a sensor to the collection"""
@@ -84,11 +85,11 @@ class DBDSensors:
         self._by_name[sensor.name] = sensor
         self._by_file_index[sensor.file_index] = sensor
 
-    def get_by_name(self, name: str) -> Optional[DBDSensor]:
+    def get_by_name(self, name: str) -> DBDSensor | None:
         """Get sensor by name"""
         return self._by_name.get(name)
 
-    def get_by_index(self, index: int) -> Optional[DBDSensor]:
+    def get_by_index(self, index: int) -> DBDSensor | None:
         """Get sensor by file index"""
         return self._by_file_index.get(index)
 
@@ -103,7 +104,7 @@ class DBDSensors:
             return self._by_name[index]
         return self.sensors[index]
 
-    def get_output_sensors(self) -> List[DBDSensor]:
+    def get_output_sensors(self) -> list[DBDSensor]:
         """Get list of sensors marked for output"""
         return [s for s in self.sensors if s.keep]
 
@@ -115,8 +116,7 @@ class DBDSensors:
                 sensor.output_index = idx
                 idx += 1
 
-    def filter_sensors(self, to_keep: Optional[List[str]] = None,
-                      criteria: Optional[List[str]] = None):
+    def filter_sensors(self, to_keep: list[str] | None = None, criteria: list[str] | None = None):
         """Filter which sensors to keep and which are criteria
 
         Args:

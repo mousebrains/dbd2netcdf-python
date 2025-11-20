@@ -4,23 +4,23 @@ LZ4 decompression support for compressed DBD files (*.?c? format)
 
 import struct
 from pathlib import Path
-from typing import BinaryIO, Union
-import io
+from typing import BinaryIO
 
 try:
     import lz4.block
+
     HAS_LZ4 = True
 except ImportError:
     HAS_LZ4 = False
 
 
-def is_compressed(filename: Union[str, Path]) -> bool:
+def is_compressed(filename: str | Path) -> bool:
     """Check if filename matches compressed DBD pattern *.?c?
 
     Examples: .dcd, .ecd, .scd, .tcd, .mcd, .ncd
     """
     suffix = Path(filename).suffix.lower()
-    return len(suffix) == 4 and suffix[2] == 'c'
+    return len(suffix) == 4 and suffix[2] == "c"
 
 
 class LZ4DecompressingReader:
@@ -43,8 +43,7 @@ class LZ4DecompressingReader:
         """
         if not HAS_LZ4:
             raise ImportError(
-                "lz4 package required for compressed DBD files. "
-                "Install with: pip install lz4"
+                "lz4 package required for compressed DBD files. Install with: pip install lz4"
             )
 
         self.fp = fp
@@ -65,7 +64,7 @@ class LZ4DecompressingReader:
             return False
 
         # Big-endian uint16
-        frame_size = struct.unpack('>H', size_bytes)[0]
+        frame_size = struct.unpack(">H", size_bytes)[0]
 
         # Read compressed frame
         compressed_data = self.fp.read(frame_size)
@@ -74,12 +73,9 @@ class LZ4DecompressingReader:
 
         # Decompress
         try:
-            decompressed = lz4.block.decompress(
-                compressed_data,
-                uncompressed_size=self.buffer_size
-            )
+            decompressed = lz4.block.decompress(compressed_data, uncompressed_size=self.buffer_size)
         except Exception as e:
-            raise IOError(f"LZ4 decompression failed: {e}")
+            raise OSError(f"LZ4 decompression failed: {e}") from e
 
         # Append to buffer
         self.buffer.extend(decompressed)
@@ -97,7 +93,7 @@ class LZ4DecompressingReader:
         """
         if size == -1:
             # Read everything
-            result = bytearray(self.buffer[self.buffer_pos:])
+            result = bytearray(self.buffer[self.buffer_pos :])
             self.buffer_pos = len(self.buffer)
 
             # Read remaining frames
@@ -105,7 +101,7 @@ class LZ4DecompressingReader:
                 if not self._read_frame():
                     self.eof = True
                     break
-                result.extend(self.buffer[self.buffer_pos:])
+                result.extend(self.buffer[self.buffer_pos :])
                 self.buffer_pos = len(self.buffer)
 
             return bytes(result)
@@ -120,14 +116,14 @@ class LZ4DecompressingReader:
 
             if available > 0:
                 take = min(available, needed)
-                result.extend(self.buffer[self.buffer_pos:self.buffer_pos + take])
+                result.extend(self.buffer[self.buffer_pos : self.buffer_pos + take])
                 self.buffer_pos += take
 
             # Need more data?
             if len(result) < size:
                 # Clean up buffer
                 if self.buffer_pos > 0:
-                    self.buffer = self.buffer[self.buffer_pos:]
+                    self.buffer = self.buffer[self.buffer_pos :]
                     self.buffer_pos = 0
 
                 # Read next frame
@@ -149,9 +145,9 @@ class LZ4DecompressingReader:
             # Search for newline in buffer
             start = self.buffer_pos
             try:
-                newline_pos = self.buffer.index(b'\n'[0], start)
+                newline_pos = self.buffer.index(b"\n"[0], start)
                 # Found newline
-                result.extend(self.buffer[start:newline_pos + 1])
+                result.extend(self.buffer[start : newline_pos + 1])
                 self.buffer_pos = newline_pos + 1
                 break
             except ValueError:
@@ -181,7 +177,7 @@ class LZ4DecompressingReader:
 
     def close(self):
         """Close the underlying file"""
-        if hasattr(self.fp, 'close'):
+        if hasattr(self.fp, "close"):
             self.fp.close()
 
     def __enter__(self):
@@ -194,7 +190,7 @@ class LZ4DecompressingReader:
         return False
 
 
-def open_dbd_file(filename: Union[str, Path], mode: str = 'rb') -> BinaryIO:
+def open_dbd_file(filename: str | Path, mode: str = "rb") -> BinaryIO:
     """Open a DBD file, handling decompression if needed
 
     Args:
@@ -210,6 +206,6 @@ def open_dbd_file(filename: Union[str, Path], mode: str = 'rb') -> BinaryIO:
     fp = open(filename, mode)
 
     if is_compressed(filename):
-        return LZ4DecompressingReader(fp)
+        return LZ4DecompressingReader(fp)  # type: ignore[arg-type, return-value]
     else:
-        return fp
+        return fp  # type: ignore[return-value]

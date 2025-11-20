@@ -2,10 +2,12 @@
 Xarray backend engine for DBD files
 """
 
+from collections.abc import Iterable
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import xarray as xr
-from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, Tuple, Union
 from xarray.backends import BackendEntrypoint
 from xarray.backends.common import (
     AbstractDataStore,
@@ -21,10 +23,10 @@ class DBDBackendArray(BackendArray):
 
     def __init__(
         self,
-        filename: Union[str, Path],
+        filename: str | Path,
         sensor_name: str,
         sensor_index: int,
-        shape: Tuple[int],
+        shape: tuple[int],
         dtype: np.dtype,
         skip_first_record: bool = True,
         repair: bool = False,
@@ -36,7 +38,7 @@ class DBDBackendArray(BackendArray):
         self.dtype = dtype
         self.skip_first_record = skip_first_record
         self.repair = repair
-        self._data = None
+        self._data: np.ndarray | None = None
 
     def _load_data(self):
         """Load data from file (cached)"""
@@ -72,11 +74,11 @@ class DBDDataStore(AbstractDataStore):
 
     def __init__(
         self,
-        filename: Union[str, Path],
+        filename: str | Path,
         skip_first_record: bool = True,
         repair: bool = False,
-        to_keep: Optional[list] = None,
-        criteria: Optional[list] = None,
+        to_keep: list | None = None,
+        criteria: list | None = None,
     ):
         self.filename = Path(filename)
         self.skip_first_record = skip_first_record
@@ -95,12 +97,12 @@ class DBDDataStore(AbstractDataStore):
         self._data, self._metadata = self.reader.read_data()
         self._sensor_metadata = self.reader.get_sensor_metadata()
 
-    def get_variables(self) -> Dict[str, xr.Variable]:
+    def get_variables(self) -> dict[str, xr.Variable]:
         """Get xarray variables for all sensors"""
-        variables = {}
+        variables: dict[str, xr.Variable] = {}
 
         output_sensors = self.reader.sensors.get_output_sensors()
-        n_records = self._data.shape[0]
+        self._data.shape[0]
 
         # Variables use only 'i' dimension
         # (the 'j' dimension is declared in get_dimensions but not used)
@@ -129,7 +131,7 @@ class DBDDataStore(AbstractDataStore):
 
         return variables
 
-    def get_attrs(self) -> Dict[str, Any]:
+    def get_attrs(self) -> dict[str, Any]:
         """Get global attributes"""
         return {
             "mission_name": self._metadata.get("mission_name", ""),
@@ -140,7 +142,7 @@ class DBDDataStore(AbstractDataStore):
             "source_file": str(self.filename),
         }
 
-    def get_dimensions(self) -> Dict[str, int]:
+    def get_dimensions(self) -> dict[str, int]:
         """Get dimensions"""
         return {"i": self._data.shape[0], "j": 1}
 
@@ -151,15 +153,15 @@ class DBDBackendEntrypoint(BackendEntrypoint):
     description = "Backend for reading Dinkum Binary Data (DBD) files"
     url = "https://github.com/mousebrains/dbd2netcdf"
 
-    def open_dataset(
+    def open_dataset(  # type: ignore[override]
         self,
-        filename_or_obj: Union[str, Path],
+        filename_or_obj: str | Path,
         *,
-        drop_variables: Optional[Tuple[str]] = None,
+        drop_variables: tuple[str] | None = None,
         skip_first_record: bool = True,
         repair: bool = False,
-        to_keep: Optional[list] = None,
-        criteria: Optional[list] = None,
+        to_keep: list | None = None,
+        criteria: list | None = None,
     ) -> xr.Dataset:
         """Open a DBD file as an xarray Dataset
 
@@ -193,7 +195,7 @@ class DBDBackendEntrypoint(BackendEntrypoint):
         )
 
         vars_dict = store.get_variables()
-        dims_dict = store.get_dimensions()
+        store.get_dimensions()
         attrs_dict = store.get_attrs()
 
         # Filter dropped variables
@@ -205,7 +207,7 @@ class DBDBackendEntrypoint(BackendEntrypoint):
 
         return dataset
 
-    def guess_can_open(self, filename_or_obj: Union[str, Path]) -> bool:
+    def guess_can_open(self, filename_or_obj: str | Path) -> bool:  # type: ignore[override]
         """Guess if this backend can open the file
 
         Checks for .dbd, .ebd, .sbd, .tbd, .mbd, .nbd extensions
@@ -214,18 +216,18 @@ class DBDBackendEntrypoint(BackendEntrypoint):
             filename = Path(filename_or_obj)
             ext = filename.suffix.lower()
             # Common DBD file extensions
-            return ext in ['.dbd', '.ebd', '.sbd', '.tbd', '.mbd', '.nbd']
+            return ext in [".dbd", ".ebd", ".sbd", ".tbd", ".mbd", ".nbd"]
         except (TypeError, AttributeError):
             return False
 
 
 def open_dbd_dataset(
-    filename: Union[str, Path],
+    filename: str | Path,
     skip_first_record: bool = True,
     repair: bool = False,
-    to_keep: Optional[list] = None,
-    criteria: Optional[list] = None,
-    drop_variables: Optional[list] = None,
+    to_keep: list | None = None,
+    criteria: list | None = None,
+    drop_variables: list | None = None,
 ) -> xr.Dataset:
     """Open a DBD file as an xarray Dataset
 
@@ -269,14 +271,14 @@ def open_dbd_dataset(
 
 
 def open_multi_dbd_dataset(
-    filenames: Iterable[Union[str, Path]],
+    filenames: Iterable[str | Path],
     skip_first_record: bool = True,
     repair: bool = False,
-    to_keep: Optional[list] = None,
-    criteria: Optional[list] = None,
-    skip_missions: Optional[list] = None,
-    keep_missions: Optional[list] = None,
-    cache_dir: Optional[Union[str, Path]] = None,
+    to_keep: list | None = None,
+    criteria: list | None = None,
+    skip_missions: list | None = None,
+    keep_missions: list | None = None,
+    cache_dir: str | Path | None = None,
 ) -> xr.Dataset:
     """Open multiple DBD files as a single xarray Dataset
 
@@ -363,7 +365,7 @@ def open_multi_dbd_dataset(
 
     # To match dbd2netCDF, we need a 'j' dimension with size 1
     # We create a dummy variable to establish the dimension, then drop it
-    ds = ds.assign_coords(j=xr.DataArray([0], dims=['j']))
-    ds = ds.drop_vars('j')
+    ds = ds.assign_coords(j=xr.DataArray([0], dims=["j"]))
+    ds = ds.drop_vars("j")
 
     return ds

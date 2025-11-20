@@ -4,12 +4,11 @@ Python implementation of dbd2netCDF
 Converts Slocum glider DBD files to NetCDF format
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
-from typing import List, Optional
+
 import xarray as xr
-import numpy as np
 
 # Add local module to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -18,52 +17,82 @@ import xarray_dbd as xdbd
 __version__ = "0.1.0"
 
 
-def read_sensor_list(filename: Path) -> List[str]:
+def read_sensor_list(filename: Path) -> list[str]:
     """Read sensor names from a file (one per line or comma/space separated)"""
     sensors = []
-    with open(filename, 'r') as f:
+    with open(filename) as f:
         for line in f:
             # Remove comments
-            line = line.split('#')[0].strip()
+            line = line.split("#")[0].strip()
             if not line:
                 continue
             # Handle comma or space separated
-            parts = line.replace(',', ' ').split()
+            parts = line.replace(",", " ").split()
             sensors.extend(parts)
     return sensors
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Convert Slocum glider DBD files to NetCDF format',
+        description="Convert Slocum glider DBD files to NetCDF format",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog='Report bugs to pat@mousebrains.com'
+        epilog="Report bugs to pat@mousebrains.com",
     )
 
-    parser.add_argument('files', nargs='+', type=Path,
-                        help='DBD files to process')
-    parser.add_argument('-a', '--append', action='store_true',
-                        help='Append to the NetCDF file')
-    parser.add_argument('-c', '--sensors', type=Path, metavar='filename',
-                        help='file containing sensors to select on (criteria)')
-    parser.add_argument('-C', '--cache', type=Path, metavar='directory',
-                        help='directory to cache sensor list in')
-    parser.add_argument('-k', '--sensorOutput', type=Path, metavar='filename',
-                        help='file containing sensors to output')
-    parser.add_argument('-m', '--skipMission', action='append', metavar='mission',
-                        help='mission to skip (can be repeated)')
-    parser.add_argument('-M', '--keepMission', action='append', metavar='mission',
-                        help='mission to keep (can be repeated)')
-    parser.add_argument('-o', '--output', type=Path, metavar='filename', required=True,
-                        help='where to store the data')
-    parser.add_argument('-s', '--skipFirst', action='store_true',
-                        help='Skip first record in each file, but the first')
-    parser.add_argument('-r', '--repair', action='store_true',
-                        help='attempt to repair bad data records')
-    parser.add_argument('-V', '--version', action='version',
-                        version=f'%(prog)s {__version__}')
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='enable some diagnostic output')
+    parser.add_argument("files", nargs="+", type=Path, help="DBD files to process")
+    parser.add_argument("-a", "--append", action="store_true", help="Append to the NetCDF file")
+    parser.add_argument(
+        "-c",
+        "--sensors",
+        type=Path,
+        metavar="filename",
+        help="file containing sensors to select on (criteria)",
+    )
+    parser.add_argument(
+        "-C", "--cache", type=Path, metavar="directory", help="directory to cache sensor list in"
+    )
+    parser.add_argument(
+        "-k",
+        "--sensorOutput",
+        type=Path,
+        metavar="filename",
+        help="file containing sensors to output",
+    )
+    parser.add_argument(
+        "-m",
+        "--skipMission",
+        action="append",
+        metavar="mission",
+        help="mission to skip (can be repeated)",
+    )
+    parser.add_argument(
+        "-M",
+        "--keepMission",
+        action="append",
+        metavar="mission",
+        help="mission to keep (can be repeated)",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        metavar="filename",
+        required=True,
+        help="where to store the data",
+    )
+    parser.add_argument(
+        "-s",
+        "--skipFirst",
+        action="store_true",
+        help="Skip first record in each file, but the first",
+    )
+    parser.add_argument(
+        "-r", "--repair", action="store_true", help="attempt to repair bad data records"
+    )
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="enable some diagnostic output"
+    )
 
     args = parser.parse_args()
 
@@ -123,7 +152,7 @@ def main():
             criteria=criteria,
             skip_missions=args.skipMission,
             keep_missions=args.keepMission,
-            cache_dir=cache_dir
+            cache_dir=cache_dir,
         )
 
         if args.verbose:
@@ -136,7 +165,7 @@ def main():
             if args.verbose:
                 print(f"Appending to {args.output}")
             ds_existing = xr.open_dataset(args.output)
-            ds_combined = xr.concat([ds_existing, ds], dim='i')
+            ds_combined = xr.concat([ds_existing, ds], dim="i")
             ds_combined.to_netcdf(args.output)
             ds_existing.close()
         else:
@@ -153,9 +182,10 @@ def main():
         print(f"Error: {e}", file=sys.stderr)
         if args.verbose:
             import traceback
+
             traceback.print_exc()
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

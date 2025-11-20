@@ -2,7 +2,8 @@
 DBD file header parsing
 """
 
-from typing import BinaryIO, Dict, Optional, Set
+import contextlib
+from typing import BinaryIO
 
 
 class DBDHeader:
@@ -16,7 +17,7 @@ class DBDHeader:
             filename: Filename for error reporting
         """
         self.filename = filename
-        self.records: Dict[str, str] = {}
+        self.records: dict[str, str] = {}
         self._parse(fp)
 
     def _parse(self, fp: BinaryIO):
@@ -24,37 +25,35 @@ class DBDHeader:
         num_lines = 10  # Default number of header lines
 
         for _ in range(1000):  # Safety limit
-            line = fp.readline()
-            if not line:
+            line_bytes = fp.readline()
+            if not line_bytes:
                 break
 
             try:
-                line = line.decode('ascii').strip()
+                line = line_bytes.decode("ascii").strip()
             except UnicodeDecodeError:
                 # Hit binary data, stop parsing
                 break
 
-            if ':' not in line:
+            if ":" not in line:
                 # Hit sensor list or binary data
                 break
 
-            key, _, value = line.partition(':')
+            key, _, value = line.partition(":")
             key = key.strip()
             value = value.strip()
 
             self.records[key] = value
 
             # Update expected number of lines
-            if key == 'num_ascii_tags':
-                try:
+            if key == "num_ascii_tags":
+                with contextlib.suppress(ValueError):
                     num_lines = int(value)
-                except ValueError:
-                    pass
 
             if len(self.records) >= num_lines:
                 break
 
-    def get(self, key: str, default: str = '') -> str:
+    def get(self, key: str, default: str = "") -> str:
         """Get a header value"""
         return self.records.get(key, default)
 
@@ -71,55 +70,55 @@ class DBDHeader:
     @property
     def mission_name(self) -> str:
         """Get mission name"""
-        return self.get('mission_name')
+        return self.get("mission_name")
 
     @property
     def num_sensors(self) -> int:
         """Get total number of sensors"""
-        return self.get_int('total_num_sensors')
+        return self.get_int("total_num_sensors")
 
     @property
     def sensor_list_crc(self) -> str:
         """Get sensor list CRC"""
-        return self.get('sensor_list_crc')
+        return self.get("sensor_list_crc")
 
     @property
     def is_factored(self) -> bool:
         """Check if sensor list is factored"""
-        return self.get_int('sensor_list_factored') != 0
+        return self.get_int("sensor_list_factored") != 0
 
     @property
     def fileopen_time(self) -> str:
         """Get file open time"""
-        return self.get('fileopen_time')
+        return self.get("fileopen_time")
 
     @property
     def encoding_version(self) -> str:
         """Get encoding version"""
-        return self.get('encoding_ver')
+        return self.get("encoding_ver")
 
     @property
     def full_filename(self) -> str:
         """Get full filename"""
-        return self.get('full_filename')
+        return self.get("full_filename")
 
     @property
     def the8x3_filename(self) -> str:
         """Get 8x3 filename"""
-        return self.get('the8x3_filename')
+        return self.get("the8x3_filename")
 
     @property
     def filename_extension(self) -> str:
         """Get filename extension"""
-        return self.get('filename_extension')
+        return self.get("filename_extension")
 
     def is_empty(self) -> bool:
         """Check if header is empty"""
         return len(self.records) == 0
 
-    def should_process_mission(self,
-                              skip_missions: Optional[Set[str]] = None,
-                              keep_missions: Optional[Set[str]] = None) -> bool:
+    def should_process_mission(
+        self, skip_missions: set[str] | None = None, keep_missions: set[str] | None = None
+    ) -> bool:
         """Check if this file's mission should be processed
 
         Args:

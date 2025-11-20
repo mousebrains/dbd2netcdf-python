@@ -6,25 +6,28 @@
 # Oct-2023, Pat Welch, pat@mousebrains.com
 # Modified Jan-2025 to use xarray-dbd
 
-from argparse import ArgumentParser
-import re
-import os
-import sys
 import logging
+import os
+import queue
+import re
+import sys
 import threading
 import time
-import queue
+from argparse import ArgumentParser
 from pathlib import Path
 
 # Add xarray-dbd to path
 sys.path.insert(0, str(Path(__file__).parent))
 import xarray_dbd as xdbd
 
+
 class RunCommand(threading.Thread):
     # Class-level queue to collect exceptions from all threads
     __exception_queue = queue.Queue()
 
-    def __init__(self, name:str, ofn:str, filenames:list, args, sensorsFilename:str=None) -> None:
+    def __init__(
+        self, name: str, ofn: str, filenames: list, args, sensorsFilename: str = None
+    ) -> None:
         threading.Thread.__init__(self)
         self.name = name
         self.__ofn = ofn
@@ -32,11 +35,11 @@ class RunCommand(threading.Thread):
         self.__args = args
         self.__sensorsFilename = sensorsFilename
 
-    def run(self): # Called on start
+    def run(self):  # Called on start
         try:
             stime = time.time()
             processFiles(self.__ofn, self.__filenames, self.__args, self.__sensorsFilename)
-            logging.info("Took %s wall clock seconds", "{:.2f}".format(time.time() - stime))
+            logging.info("Took %s wall clock seconds", f"{time.time() - stime:.2f}")
         except Exception as e:
             logging.exception("Executing")
             # Push exception to queue so main thread can detect it
@@ -50,7 +53,9 @@ class RunCommand(threading.Thread):
             raise RuntimeError(f"Thread {name} failed") from exception
 
 
-def processFiles(ofn:str, filenames:list, args:ArgumentParser, sensorsFilename:str=None) -> None:
+def processFiles(
+    ofn: str, filenames: list, args: ArgumentParser, sensorsFilename: str = None
+) -> None:
     """Process files using xarray-dbd"""
     logging.info("%s files", len(filenames))
 
@@ -63,7 +68,7 @@ def processFiles(ofn:str, filenames:list, args:ArgumentParser, sensorsFilename:s
     # Read sensor list if provided
     to_keep = None
     if sensorsFilename:
-        with open(sensorsFilename, 'r') as f:
+        with open(sensorsFilename) as f:
             to_keep = [line.strip() for line in f if line.strip()]
 
     # Prepare arguments for xarray-dbd
@@ -79,16 +84,15 @@ def processFiles(ofn:str, filenames:list, args:ArgumentParser, sensorsFilename:s
         to_keep=to_keep,
         skip_missions=skip_missions,
         keep_missions=keep_missions,
-        cache_dir=cache_dir
+        cache_dir=cache_dir,
     )
 
     # Write to NetCDF
     ds.to_netcdf(ofn)
-    logging.info("Wrote %s with %d records and %d variables",
-                 ofn, len(ds.i), len(ds.data_vars))
+    logging.info("Wrote %s with %d records and %d variables", ofn, len(ds.i), len(ds.data_vars))
 
 
-def extractSensors(filenames:list, args:ArgumentParser) -> list:
+def extractSensors(filenames: list, args: ArgumentParser) -> list:
     """Extract unique sensor names from files"""
     all_sensors = set()
 
@@ -97,11 +101,7 @@ def extractSensors(filenames:list, args:ArgumentParser) -> list:
     for filename in filenames:
         try:
             # Read just the header to get sensors
-            reader = xdbd.DBDReader(
-                Path(filename),
-                skip_first_record=False,
-                cache_dir=cache_dir
-            )
+            reader = xdbd.DBDReader(Path(filename), skip_first_record=False, cache_dir=cache_dir)
             sensors = reader.sensors.get_output_sensors()
             all_sensors.update(s.name for s in sensors)
         except Exception as e:
@@ -110,18 +110,21 @@ def extractSensors(filenames:list, args:ArgumentParser) -> list:
     return list(all_sensors)
 
 
-def processAll(filenames:list, args:ArgumentParser, suffix:str, sensorsFilename:str=None) -> None:
+def processAll(
+    filenames: list, args: ArgumentParser, suffix: str, sensorsFilename: str = None
+) -> None:
     """Process files into a NetCDF"""
-    filenames = list(filenames) # ensure it is a list
-    if not filenames: return # Nothing to do
+    filenames = list(filenames)  # ensure it is a list
+    if not filenames:
+        return  # Nothing to do
 
-    ofn = args.outputPrefix + suffix # Output filename
+    ofn = args.outputPrefix + suffix  # Output filename
 
     rc = RunCommand(suffix, ofn, filenames, args, sensorsFilename)
     rc.start()
 
 
-def writeSensors(sensors:set, ofn:str) -> None:
+def writeSensors(sensors: set, ofn: str) -> None:
     odir = os.path.dirname(ofn)
     if not os.path.isdir(odir):
         logging.info("Creating %s", odir)
@@ -133,10 +136,11 @@ def writeSensors(sensors:set, ofn:str) -> None:
     return ofn
 
 
-def processDBD(filenames:list, args:ArgumentParser) -> None:
+def processDBD(filenames: list, args: ArgumentParser) -> None:
     """Process flight Dinkum Binary files"""
     filenames = list(filenames)
-    if not filenames: return # Nothing to do
+    if not filenames:
+        return  # Nothing to do
 
     allSensors = set(extractSensors(filenames, args))
     dbdSensors = set(filter(lambda x: x.startswith("m_") or x.startswith("c_"), allSensors))
@@ -145,7 +149,7 @@ def processDBD(filenames:list, args:ArgumentParser) -> None:
     sciSensors.add("m_present_time")
     otroSensors.add("m_present_time")
 
-    allFN = writeSensors(allSensors, args.outputPrefix + "dbd.all.sensors")
+    writeSensors(allSensors, args.outputPrefix + "dbd.all.sensors")
     dbdFN = writeSensors(dbdSensors, args.outputPrefix + "dbd.sensors")
     sciFN = writeSensors(sciSensors, args.outputPrefix + "dbd.sci.sensors")
     otroFN = writeSensors(otroSensors, args.outputPrefix + "dbd.other.sensors")
@@ -155,31 +159,36 @@ def processDBD(filenames:list, args:ArgumentParser) -> None:
     processAll(filenames, args, "dbd.other.nc", otroFN)
 
 
-parser = ArgumentParser()
-parser.add_argument("filename", type=str, nargs="+", help="Dinkum binary files to convert")
+def main():
+    """Main entry point for mkone command"""
+    parser = ArgumentParser()
+    parser.add_argument("filename", type=str, nargs="+", help="Dinkum binary files to convert")
 
-grp = parser.add_argument_group(description="Processing options")
-grp.add_argument("--cache", type=str, default="cache", help="Directory for sensor cache files")
-grp.add_argument("--verbose", action="store_true", help="Verbose output")
-grp.add_argument("--repair", action="store_true", help="Should corrupted files be 'repaired'")
-grp.add_argument("--keepFirst", action="store_true",
-                 help="Should the first record not be discarded on all the files?")
-g = grp.add_mutually_exclusive_group()
-g.add_argument("--exclude", type=str, action="append", help="Mission(s) to exclude")
-g.add_argument("--include", type=str, action="append", help="Mission(s) to include")
+    grp = parser.add_argument_group(description="Processing options")
+    grp.add_argument("--cache", type=str, default="cache", help="Directory for sensor cache files")
+    grp.add_argument("--verbose", action="store_true", help="Verbose output")
+    grp.add_argument("--repair", action="store_true", help="Should corrupted files be 'repaired'")
+    grp.add_argument(
+        "--keepFirst",
+        action="store_true",
+        help="Should the first record not be discarded on all the files?",
+    )
+    g = grp.add_mutually_exclusive_group()
+    g.add_argument("--exclude", type=str, action="append", help="Mission(s) to exclude")
+    g.add_argument("--include", type=str, action="append", help="Mission(s) to include")
 
-grp = parser.add_argument_group(description="Output related arguments")
-grp.add_argument("--outputPrefix", type=str, required=True, help="Output prefix")
+    grp = parser.add_argument_group(description="Output related arguments")
+    grp.add_argument("--outputPrefix", type=str, required=True, help="Output prefix")
 
-args = parser.parse_args()
+    args = parser.parse_args()
 
-logging.basicConfig(
+    logging.basicConfig(
         format="%(asctime)s %(threadName)s %(levelname)s: %(message)s",
         level=logging.DEBUG if args.verbose else logging.INFO,
-        )
+    )
 
-if args.exclude is None and args.include is None:
-    args.exclude = ( # Default missions to exclude
+    if args.exclude is None and args.include is None:
+        args.exclude = (  # Default missions to exclude
             "status.mi",
             "lastgasp.mi",
             "initial.mi",
@@ -188,35 +197,46 @@ if args.exclude is None and args.include is None:
             "ini1.mi",
             "ini2.mi",
             "ini3.mi",
-            )
+        )
 
-args.cache = os.path.abspath(os.path.expanduser(args.cache))
+    args.cache = os.path.abspath(os.path.expanduser(args.cache))
 
-if not os.path.isdir(args.cache):
-    logging.info("Creating %s", args.cache)
-    os.makedirs(args.cache, mode=0o755, exist_ok=True)
+    if not os.path.isdir(args.cache):
+        logging.info("Creating %s", args.cache)
+        os.makedirs(args.cache, mode=0o755, exist_ok=True)
 
-files = list(map(lambda x: os.path.abspath(os.path.expanduser(x)), args.filename))
+    files = [os.path.abspath(os.path.expanduser(x)) for x in args.filename]
 
-processAll(filter(lambda x: re.search(r"[.]s[bc]d", x, re.IGNORECASE), files),
-           args, "sbd.nc") # Flight decimated Dinkum Binary files
-processAll(filter(lambda x: re.search(r"[.]t[bc]d", x, re.IGNORECASE), files),
-           args, "tbd.nc") # Science decimated Dinkum Binary files
-processAll(filter(lambda x: re.search(r"[.]m[bc]d", x, re.IGNORECASE), files),
-           args, "mbd.nc") # Flight decimated Dinkum Binary files
-processAll(filter(lambda x: re.search(r"[.]n[bc]d", x, re.IGNORECASE), files),
-           args, "nbd.nc") # Science decimated Dinkum Binary files
-processDBD(filter(lambda x: re.search(r"[.]d[bc]d", x, re.IGNORECASE), files),
-           args) # Flight Dinkum Binary files
-processAll(filter(lambda x: re.search(r"[.]e[bc]d", x, re.IGNORECASE), files),
-           args, "ebd.nc") # Science Dinkum Binary files
+    processAll(
+        filter(lambda x: re.search(r"[.]s[bc]d", x, re.IGNORECASE), files), args, "sbd.nc"
+    )  # Flight decimated Dinkum Binary files
+    processAll(
+        filter(lambda x: re.search(r"[.]t[bc]d", x, re.IGNORECASE), files), args, "tbd.nc"
+    )  # Science decimated Dinkum Binary files
+    processAll(
+        filter(lambda x: re.search(r"[.]m[bc]d", x, re.IGNORECASE), files), args, "mbd.nc"
+    )  # Flight decimated Dinkum Binary files
+    processAll(
+        filter(lambda x: re.search(r"[.]n[bc]d", x, re.IGNORECASE), files), args, "nbd.nc"
+    )  # Science decimated Dinkum Binary files
+    processDBD(
+        filter(lambda x: re.search(r"[.]d[bc]d", x, re.IGNORECASE), files), args
+    )  # Flight Dinkum Binary files
+    processAll(
+        filter(lambda x: re.search(r"[.]e[bc]d", x, re.IGNORECASE), files), args, "ebd.nc"
+    )  # Science Dinkum Binary files
 
-# Wait for the children to finish
-for thrd in threading.enumerate():
-    if thrd != threading.main_thread():
-        thrd.join()
+    # Wait for the children to finish
+    for thrd in threading.enumerate():
+        if thrd != threading.main_thread():
+            thrd.join()
 
-# Check if any thread failed
-RunCommand.check_exceptions()
+    # Check if any thread failed
+    RunCommand.check_exceptions()
 
-logging.info("All processing complete!")
+    logging.info("All processing complete!")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
