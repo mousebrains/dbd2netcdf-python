@@ -5,8 +5,9 @@ Test xarray-dbd with real compressed DBD files
 
 import sys
 import time
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -28,13 +29,13 @@ def test_decompression():
     try:
         # Check file is recognized as compressed
         assert is_compressed(test_file), "File not recognized as compressed"
-        print(f"✓ File recognized as compressed")
+        print("✓ File recognized as compressed")
 
         # Open and read some data
         with open_dbd_file(test_file, 'rb') as fp:
             # Read header lines
             lines = []
-            for i in range(20):
+            for _i in range(20):
                 line = fp.readline()
                 if not line:
                     break
@@ -81,7 +82,7 @@ def test_read_compressed_file():
 
         # List some variables
         vars_list = list(ds.data_vars)
-        print(f"\n  First 10 variables:")
+        print("\n  First 10 variables:")
         for var in vars_list[:10]:
             data = ds[var].values
             n_valid = np.sum(~np.isnan(data))
@@ -92,7 +93,7 @@ def test_read_compressed_file():
                 print(f"    {var:30s}: {n_valid:4d} values (all NaN)")
 
         # Check metadata
-        print(f"\n  Metadata:")
+        print("\n  Metadata:")
         for key in ['mission_name', 'encoding_version', 'source_file']:
             if key in ds.attrs:
                 print(f"    {key}: {ds.attrs[key]}")
@@ -142,7 +143,7 @@ def test_multiple_compressed_files():
             if n_valid > 0:
                 vars_with_data.append((var, n_valid))
 
-        print(f"\n  Variables with data (first 10):")
+        print("\n  Variables with data (first 10):")
         for var, n_valid in vars_with_data[:10]:
             print(f"    {var:30s}: {n_valid} valid values")
 
@@ -174,7 +175,7 @@ def test_cache_sensors():
 
         # Try reading one
         try:
-            with open(cache_files[0], 'r') as fp:
+            with open(cache_files[0]) as fp:
                 lines = fp.readlines()[:5]
             print(f"\n  Sample cache file content ({cache_files[0].name}):")
             for line in lines:

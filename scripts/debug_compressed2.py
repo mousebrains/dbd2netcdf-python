@@ -3,6 +3,7 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.decompression import open_dbd_file
@@ -29,15 +30,15 @@ if cache_file.exists():
     print(f"✓ Found cache file ({cache_file.stat().st_size} bytes)")
 
     # Read sensors from cache
-    with open(cache_file, 'r') as fp:
+    with open(cache_file) as fp:
         lines = fp.readlines()
 
     print(f"  Cache has {len(lines)} lines")
-    print(f"  First 5 lines:")
+    print("  First 5 lines:")
     for line in lines[:5]:
         print(f"    {line.strip()}")
 else:
-    print(f"✗ Cache file not found")
+    print("✗ Cache file not found")
     # List what's in cache
     cache_files = sorted(cache_dir.glob("*.cac"))
     print(f"\n  Available cache files ({len(cache_files)}):")

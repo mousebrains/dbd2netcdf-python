@@ -5,10 +5,10 @@ Comprehensive performance and correctness comparison
 
 import sys
 import time
-import numpy as np
-from pathlib import Path
-import subprocess
 import tracemalloc
+from pathlib import Path
+
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -50,7 +50,7 @@ def test_performance_single_file():
     print(f"   Memory (peak): {peak / (1024 * 1024):.1f} MB")
 
     # List some data stats
-    print(f"\n   Sample data check:")
+    print("\n   Sample data check:")
     vars_with_data = []
     for var in list(ds.data_vars)[:20]:
         data = ds[var].values
@@ -111,7 +111,7 @@ def test_data_correctness():
 
     ds = xdbd.open_dbd_dataset(test_file, skip_first_record=False)
 
-    print(f"Dataset info:")
+    print("Dataset info:")
     print(f"   Records: {len(ds.i)}")
     print(f"   Variables: {len(ds.data_vars)}")
 

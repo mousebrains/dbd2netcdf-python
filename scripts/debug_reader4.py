@@ -3,11 +3,12 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.header import DBDHeader
-from xarray_dbd.sensor import DBDSensor, DBDSensors
 from xarray_dbd.reader import KnownBytes
+from xarray_dbd.sensor import DBDSensor, DBDSensors
 
 test_file = Path("dbd2netcdf/test/test.sbd")
 
@@ -47,7 +48,7 @@ with open(test_file, 'rb') as fp:
             new_value_sensors.append(sensor)
 
     print(f"Total sensors with new values: {len(new_value_sensors)}")
-    print(f"\nFirst 20 sensors with new data:")
+    print("\nFirst 20 sensors with new data:")
     for i, sensor in enumerate(new_value_sensors[:20]):
         print(f"  {i:3d}. {sensor.name:40s} size={sensor.size}")
 
@@ -65,7 +66,7 @@ with open(test_file, 'rb') as fp:
 
     # What's next?
     next_20 = fp.read(20)
-    print(f"\nNext 20 bytes after data:")
+    print("\nNext 20 bytes after data:")
     print(f"  Hex: {next_20.hex()}")
     print(f"  ASCII: {repr(next_20)}")
     print(f"  First byte: 0x{next_20[0]:02x} = '{chr(next_20[0]) if 32 <= next_20[0] < 127 else '?'}'")
@@ -76,7 +77,7 @@ with open(test_file, 'rb') as fp:
     elif next_20[0] == ord('d'):
         print("  -> This is another 'd' data record tag")
     else:
-        print(f"  -> Unexpected byte!")
+        print("  -> Unexpected byte!")
 
     # How much data is left?
     current_pos = fp.tell() - 20

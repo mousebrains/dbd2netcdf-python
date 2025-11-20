@@ -3,13 +3,14 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
+
 
 from xarray_dbd.decompression import open_dbd_file
 from xarray_dbd.header import DBDHeader
-from xarray_dbd.sensor import DBDSensors, DBDSensor
 from xarray_dbd.reader import KnownBytes
-import struct
+from xarray_dbd.sensor import DBDSensor, DBDSensors
 
 test_file = Path("dbd_files/01330000.dcd")
 cache_dir = Path("dbd_files/cache")
@@ -22,7 +23,7 @@ with open_dbd_file(test_file, 'rb') as fp:
     # Read sensors from cache
     cache_file = cache_dir / f"{header.sensor_list_crc.lower()}.cac"
     sensors = DBDSensors()
-    with open(cache_file, 'r') as cf:
+    with open(cache_file) as cf:
         for line in cf:
             if line.strip().startswith('s:'):
                 sensors.add(DBDSensor(line.strip()))
@@ -66,7 +67,7 @@ with open_dbd_file(test_file, 'rb') as fp:
     n_sensors = len(sensors)
     header_bytes = (n_sensors + 3) // 4
 
-    print(f"\n=== Reading records ===")
+    print("\n=== Reading records ===")
     for record_num in range(10):
         # Read tag
         tag_byte = fp.read(1)

@@ -3,11 +3,12 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.header import DBDHeader
-from xarray_dbd.sensor import DBDSensor, DBDSensors
 from xarray_dbd.reader import KnownBytes
+from xarray_dbd.sensor import DBDSensor, DBDSensors
 
 test_file = Path("dbd2netcdf/test/test.sbd")
 
@@ -56,7 +57,7 @@ with open(test_file, 'rb') as fp:
             sensors_with_code2.append((sensor_idx, sensor.name, sensor.size))
             bytes_to_read += sensor.size
 
-    print(f"\nCode distribution:")
+    print("\nCode distribution:")
     for code, count in code_counts.items():
         print(f"  Code {code}: {count} sensors")
 
@@ -65,7 +66,7 @@ with open(test_file, 'rb') as fp:
 
     # Now actually read them
     bytes_read = 0
-    for idx, name, size in sensors_with_code2:
+    for _idx, _name, size in sensors_with_code2:
         value_bytes = fp.read(size)
         bytes_read += len(value_bytes)
 
@@ -75,7 +76,7 @@ with open(test_file, 'rb') as fp:
 
     # What's next?
     next_10 = fp.read(10)
-    print(f"\nNext 10 bytes:")
+    print("\nNext 10 bytes:")
     print(f"  Hex: {next_10.hex()}")
     print(f"  First byte: 0x{next_10[0]:02x}")
 

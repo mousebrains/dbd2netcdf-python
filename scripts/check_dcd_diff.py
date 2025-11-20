@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-import xarray as xr
+import os
 import subprocess
 import tempfile
-import numpy as np
 from pathlib import Path
-import os
+
+import numpy as np
+import xarray as xr
 
 # Test with .dcd file
 test_file = Path('dbd_files/01220000.dcd')

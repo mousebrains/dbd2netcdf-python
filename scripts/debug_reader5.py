@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Debug individual value reading"""
 
-import sys
 import struct
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.header import DBDHeader
-from xarray_dbd.sensor import DBDSensor, DBDSensors
 from xarray_dbd.reader import KnownBytes
+from xarray_dbd.sensor import DBDSensor, DBDSensors
 
 test_file = Path("dbd2netcdf/test/test.sbd")
 
@@ -18,7 +19,7 @@ with open(test_file, 'rb') as fp:
 
     # Read sensors
     sensors = DBDSensors()
-    for i in range(header.num_sensors):
+    for _i in range(header.num_sensors):
         line = fp.readline().decode('ascii').strip()
         sensor = DBDSensor(line)
         sensors.add(sensor)

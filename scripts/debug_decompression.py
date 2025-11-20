@@ -3,10 +3,12 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
-import lz4.block
 import struct
+
+import lz4.block
 
 test_file = Path("dbd_files/01330000.dcd")
 

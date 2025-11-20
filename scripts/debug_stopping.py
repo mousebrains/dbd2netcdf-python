@@ -3,12 +3,13 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.decompression import open_dbd_file
 from xarray_dbd.header import DBDHeader
-from xarray_dbd.sensor import DBDSensors, DBDSensor
 from xarray_dbd.reader import KnownBytes
+from xarray_dbd.sensor import DBDSensor, DBDSensors
 
 test_file = Path("dbd_files/01330000.dcd")
 cache_dir = Path("dbd_files/cache")
@@ -21,7 +22,7 @@ with open_dbd_file(test_file, 'rb') as fp:
     # Read sensors from cache
     cache_file = cache_dir / f"{header.sensor_list_crc.lower()}.cac"
     sensors = DBDSensors()
-    with open(cache_file, 'r') as cf:
+    with open(cache_file) as cf:
         for line in cf:
             if line.strip().startswith('s:'):
                 sensors.add(DBDSensor(line.strip()))
@@ -58,7 +59,7 @@ with open_dbd_file(test_file, 'rb') as fp:
         print(f"    Tag: 0x{tag:02x} = '{chr(tag) if 32 <= tag < 127 else '?'}'")
 
         if tag == ord('d'):
-            print(f"    ✓ Valid 'd' tag")
+            print("    ✓ Valid 'd' tag")
             # Read header
             header_bits = fp.read(header_bytes)
             if len(header_bits) != header_bytes:
@@ -84,14 +85,14 @@ with open_dbd_file(test_file, 'rb') as fp:
             print(f"    Read {len(value_bytes)} value bytes")
 
             if len(value_bytes) != bytes_needed:
-                print(f"    ✗ Short read")
+                print("    ✗ Short read")
                 break
 
         elif tag == ord('X'):
-            print(f"    End tag")
+            print("    End tag")
             break
         else:
-            print(f"    ✗ Unexpected tag")
+            print("    ✗ Unexpected tag")
             # Check next few bytes
             next_bytes = fp.read(20)
             print(f"    Next 20 bytes: {next_bytes.hex()}")

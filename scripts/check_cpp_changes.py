@@ -7,7 +7,6 @@ to be incorporated into the Python implementation.
 import subprocess
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # Files to monitor for changes
 CRITICAL_FILES = {
@@ -86,7 +85,7 @@ def check_cpp_repo():
         print()
         return True
 
-    print(f"📝 New commits found:")
+    print("📝 New commits found:")
     print(new_commits)
     print()
 

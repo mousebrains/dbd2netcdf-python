@@ -5,8 +5,9 @@ Test script for xarray-dbd engine
 
 import sys
 import time
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 # Add current directory to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -38,7 +39,7 @@ def test_single_file():
 
         # Print some variables
         print("\n  First 5 variables:")
-        for i, var in enumerate(list(ds.data_vars)[:5]):
+        for _i, var in enumerate(list(ds.data_vars)[:5]):
             units = ds[var].attrs.get('units', '')
             print(f"    {var}: {units}")
 

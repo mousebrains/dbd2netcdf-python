@@ -3,6 +3,7 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.decompression import open_dbd_file
@@ -46,7 +47,7 @@ with open_dbd_file(test_file, 'rb') as fp:
     print(f"   Position: {fp.tell()}")
 
     # Try reading next 20 bytes
-    print(f"\n3. Next 20 bytes:")
+    print("\n3. Next 20 bytes:")
     next_bytes = fp.read(20)
     print(f"   Hex: {next_bytes.hex()}")
     print(f"   ASCII: {repr(next_bytes)}")

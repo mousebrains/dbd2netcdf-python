@@ -3,11 +3,12 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.header import DBDHeader
-from xarray_dbd.sensor import DBDSensor, DBDSensors
 from xarray_dbd.reader import KnownBytes
+from xarray_dbd.sensor import DBDSensor, DBDSensors
 
 test_file = Path("dbd2netcdf/test/test.sbd")
 
@@ -36,10 +37,10 @@ with open(test_file, 'rb') as fp:
     first_byte = header_bits[0]
     print(f"First header byte: 0x{first_byte:02x} = {first_byte:08b}")
     print("Bit layout (MSB to LSB):")
-    print("  Bits 7-6 (sensor 0): {}".format((first_byte >> 6) & 0x03))
-    print("  Bits 5-4 (sensor 1): {}".format((first_byte >> 4) & 0x03))
-    print("  Bits 3-2 (sensor 2): {}".format((first_byte >> 2) & 0x03))
-    print("  Bits 1-0 (sensor 3): {}".format((first_byte >> 0) & 0x03))
+    print(f"  Bits 7-6 (sensor 0): {(first_byte >> 6) & 0x03}")
+    print(f"  Bits 5-4 (sensor 1): {(first_byte >> 4) & 0x03}")
+    print(f"  Bits 3-2 (sensor 2): {(first_byte >> 2) & 0x03}")
+    print(f"  Bits 1-0 (sensor 3): {(first_byte >> 0) & 0x03}")
 
     # Show first 4 sensors
     print("\nFirst 4 sensors:")

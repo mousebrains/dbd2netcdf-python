@@ -3,11 +3,12 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.header import DBDHeader
-from xarray_dbd.sensor import DBDSensor, DBDSensors
 from xarray_dbd.reader import KnownBytes
+from xarray_dbd.sensor import DBDSensor, DBDSensors
 
 test_file = Path("dbd2netcdf/test/test.sbd")
 

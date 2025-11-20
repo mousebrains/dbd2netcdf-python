@@ -3,6 +3,7 @@
 
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from xarray_dbd.decompression import open_dbd_file
@@ -35,12 +36,12 @@ with open_dbd_file(test_file, 'rb') as fp:
     print(f"Found {len(X_positions)} 'X' tags")
 
     if d_positions:
-        print(f"\nFirst 20 'd' tag positions:")
+        print("\nFirst 20 'd' tag positions:")
         for i, pos in enumerate(d_positions[:20]):
             print(f"  {i}: position {pos} (absolute: {header_pos + pos})")
 
     if X_positions:
-        print(f"\nFirst 20 'X' tag positions:")
+        print("\nFirst 20 'X' tag positions:")
         for i, pos in enumerate(X_positions[:20]):
             # Check what's around this X
             start = max(0, pos - 5)
@@ -51,7 +52,7 @@ with open_dbd_file(test_file, 'rb') as fp:
     # Check specifically around position where we think we see 'X'
     # From debug_criteria.py, record 1 ended and we found 'X'
     # Let's see what the data looks like there
-    print(f"\n=== Checking data around our stopping point ===")
+    print("\n=== Checking data around our stopping point ===")
     # After record 0 (6701 bytes) + record 1 (found after 241 bytes + header + 590 bytes)
     # Let's search for it
     search_start = 7000  # Around where record 1 ends

@@ -3,19 +3,21 @@
 Test dbd2nc.py against dbd2netCDF for various file types
 """
 
-import sys
-import subprocess
-from pathlib import Path
-import xarray as xr
-import numpy as np
-import tempfile
 import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import xarray as xr
+
 
 def compare_netcdf_files(file1: Path, file2: Path, verbose: bool = True) -> bool:
     """Compare two NetCDF files for equivalence"""
 
     if verbose:
-        print(f"\nComparing:")
+        print("\nComparing:")
         print(f"  File 1: {file1}")
         print(f"  File 2: {file2}")
 
@@ -26,7 +28,7 @@ def compare_netcdf_files(file1: Path, file2: Path, verbose: bool = True) -> bool
     # Compare dimensions (focus on 'i' dimension which contains the data)
     # The 'j' dimension is a legacy artifact with size 1 that may or may not be present
     if ds1.sizes.get('i') != ds2.sizes.get('i'):
-        print(f"  ✗ 'i' dimension sizes differ:")
+        print("  ✗ 'i' dimension sizes differ:")
         print(f"    File 1: {ds1.sizes.get('i')}")
         print(f"    File 2: {ds2.sizes.get('i')}")
         return False
@@ -43,9 +45,9 @@ def compare_netcdf_files(file1: Path, file2: Path, verbose: bool = True) -> bool
     common = vars1 & vars2
 
     if only_in_1:
-        print(f"  Note: {len(only_in_1)} variables only in file 1: {sorted(list(only_in_1))[:5]}...")
+        print(f"  Note: {len(only_in_1)} variables only in file 1: {sorted(only_in_1)[:5]}...")
     if only_in_2:
-        print(f"  Note: {len(only_in_2)} variables only in file 2: {sorted(list(only_in_2))[:5]}...")
+        print(f"  Note: {len(only_in_2)} variables only in file 2: {sorted(only_in_2)[:5]}...")
 
     if verbose:
         print(f"  Comparing {len(common)} common variables...")
@@ -148,7 +150,7 @@ def test_file_type(file_pattern: str, description: str):
         if result.returncode != 0:
             print(f"  ✗ C++ dbd2netCDF failed: {result.stderr}")
             return False
-        print(f"  ✓ C++ dbd2netCDF completed")
+        print("  ✓ C++ dbd2netCDF completed")
 
         # Run Python version
         cmd_python = [
@@ -161,7 +163,7 @@ def test_file_type(file_pattern: str, description: str):
         if result.returncode != 0:
             print(f"  ✗ Python dbd2nc failed: {result.stdout}\n{result.stderr}")
             return False
-        print(f"  ✓ Python dbd2nc completed")
+        print("  ✓ Python dbd2nc completed")
 
         # Compare outputs
         match = compare_netcdf_files(Path(nc_cpp), Path(nc_python))
@@ -196,7 +198,7 @@ def test_file_type(file_pattern: str, description: str):
             if result.returncode != 0:
                 print(f"  ✗ C++ dbd2netCDF failed: {result.stderr}")
                 return False
-            print(f"  ✓ C++ dbd2netCDF completed")
+            print("  ✓ C++ dbd2netCDF completed")
 
             # Run Python version
             cmd_python = [
@@ -209,7 +211,7 @@ def test_file_type(file_pattern: str, description: str):
             if result.returncode != 0:
                 print(f"  ✗ Python dbd2nc failed: {result.stdout}\n{result.stderr}")
                 return False
-            print(f"  ✓ Python dbd2nc completed")
+            print("  ✓ Python dbd2nc completed")
 
             # Compare outputs
             match = compare_netcdf_files(Path(nc_cpp), Path(nc_python))
