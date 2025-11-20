@@ -1,0 +1,8 @@
+s: T 0 0 8 sci_m_present_time timestamp
+s: T 1 1 4 sci_water_pressure bar
+s: T 2 2 4 sci_water_cond s/m
+s: T 3 3 4 sci_water_temp degc
+s: T 4 4 4 sci_bbfl2s_bb_sig nodim
+s: T 5 5 4 sci_bbfl2s_chlor_sig nodim
+s: T 6 6 4 sci_bbfl2s_cdom_sig nodim
+s: T 7 7 4 sci_oxy3835_oxygen nodim

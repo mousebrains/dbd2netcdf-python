@@ -1,0 +1,13 @@
+s: T 0 0 4 m_altitude m
+s: T 1 1 4 m_battery volts
+s: T 2 2 4 m_battpos in
+s: T 3 3 4 m_depth m
+s: T 4 4 8 m_gps_lat lat
+s: T 5 5 8 m_gps_lon lon
+s: T 6 6 4 m_leakdetect_voltage volts
+s: T 7 7 4 m_pitch rad
+s: T 8 8 4 m_present_secs_into_mission sec
+s: T 9 9 8 m_present_time timestamp
+s: T 10 10 4 m_roll rad
+s: T 11 11 4 m_vacuum inHg
+s: T 12 12 4 m_water_depth m
