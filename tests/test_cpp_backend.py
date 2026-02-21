@@ -1,5 +1,6 @@
 """Tests for the C++ backend (_dbd_cpp module)"""
 
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -7,14 +8,15 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-
 from xarray_dbd._dbd_cpp import read_dbd_file, read_dbd_files
+
+import xarray_dbd as xdbd
 
 # Test data directory
 DBD_DIR = Path(__file__).parent.parent / "dbd_files"
 CACHE_DIR = str(DBD_DIR / "cache")
-CPP_REF_DIR = Path("/Users/pat/tpw/mariner/tpw")
-RAW_DIR = Path("/Users/pat/tpw/mariner/onboard/raw")
+CPP_REF_DIR = Path(os.getenv("DBD_CPP_REF_DIR", "/Users/pat/tpw/mariner/tpw"))
+RAW_DIR = Path(os.getenv("DBD_RAW_DIR", "/Users/pat/tpw/mariner/onboard/raw"))
 
 
 def test_import():
@@ -102,8 +104,6 @@ def test_read_multiple_files():
 
 def test_open_multi_dbd_dataset():
     """open_multi_dbd_dataset returns correct Dataset."""
-    import xarray_dbd as xdbd
-
     files = sorted(DBD_DIR.glob("*.dcd"))[:5]
     if len(files) < 2:
         pytest.skip("Need at least 2 test files")
@@ -145,7 +145,6 @@ def test_record_count_vs_cpp_dbd():
     cpp_records = len(ref.i)
     ref.close()
 
-    import xarray_dbd as xdbd
     dbd_files = sorted(RAW_DIR.rglob("*.dcd"))
 
     # Read with same parameters as mkOne.py default
@@ -173,7 +172,6 @@ def test_values_match_cpp_tbd():
     """Float values match C++ reference for tbd files."""
     ref = xr.open_dataset(CPP_REF_DIR / "tbd.nc", decode_timedelta=False)
 
-    import xarray_dbd as xdbd
     tbd_files = sorted(RAW_DIR.rglob("*.tcd"))
 
     skip_missions = ["status.mi", "lastgasp.mi", "initial.mi", "overtime.mi",
@@ -234,3 +232,56 @@ def test_single_file_vs_standalone_cpp():
         assert py_n == cpp_n, f"Record count mismatch: py={py_n}, cpp={cpp_n}"
     finally:
         Path(tmpname).unlink(missing_ok=True)
+
+
+# --- Edge case tests ---
+
+
+def test_empty_file_list():
+    """open_multi_dbd_dataset([]) returns empty Dataset."""
+    ds = xdbd.open_multi_dbd_dataset([])
+    assert isinstance(ds, xr.Dataset)
+    assert len(ds.data_vars) == 0
+    ds.close()
+
+
+def test_nonexistent_file():
+    """Reading a non-existent file raises a meaningful error."""
+    with pytest.raises((OSError, RuntimeError)):
+        xdbd.open_dbd_dataset("/nonexistent/path/fake.dbd")
+
+
+def test_nonexistent_file_in_multi():
+    """Multi-file reader with non-existent files returns empty Dataset (C++ skips bad files)."""
+    ds = xdbd.open_multi_dbd_dataset(["/nonexistent/path/fake.dbd"])
+    assert isinstance(ds, xr.Dataset)
+    assert len(ds.data_vars) == 0
+    ds.close()
+
+
+@pytest.mark.skipif(not (DBD_DIR / "01330000.dcd").exists(), reason="Test data not available")
+def test_to_keep_filters_sensors():
+    """to_keep parameter limits which sensors appear in output."""
+    f = DBD_DIR / "01330000.dcd"
+    ds_all = xdbd.open_dbd_dataset(f, cache_dir=CACHE_DIR, skip_first_record=False)
+    ds_filtered = xdbd.open_dbd_dataset(
+        f, cache_dir=CACHE_DIR, skip_first_record=False, to_keep=["m_present_time"]
+    )
+
+    assert len(ds_filtered.data_vars) < len(ds_all.data_vars)
+    assert "m_present_time" in ds_filtered.data_vars
+    ds_all.close()
+    ds_filtered.close()
+
+
+@pytest.mark.skipif(not (DBD_DIR / "01330000.dcd").exists(), reason="Test data not available")
+def test_column_record_consistency():
+    """All columns have exactly n_records rows."""
+    f = str(DBD_DIR / "01330000.dcd")
+    result = read_dbd_file(f, cache_dir=CACHE_DIR, skip_first_record=False)
+
+    n = result["n_records"]
+    for i, col in enumerate(result["columns"]):
+        assert len(col) == n, (
+            f"Sensor {result['sensor_names'][i]}: expected {n} records, got {len(col)}"
+        )

@@ -162,10 +162,9 @@ def main():
             # Append mode: read existing, concatenate, write
             if args.verbose:
                 print(f"Appending to {args.output}")
-            ds_existing = xr.open_dataset(args.output)
-            ds_combined = xr.concat([ds_existing, ds], dim="i")
-            ds_combined.to_netcdf(args.output)
-            ds_existing.close()
+            with xr.open_dataset(args.output) as ds_existing:
+                ds_combined = xr.concat([ds_existing, ds], dim="i")
+                ds_combined.to_netcdf(args.output)
         else:
             if args.verbose:
                 print(f"Writing to {args.output}")
@@ -176,7 +175,7 @@ def main():
 
         return 0
 
-    except Exception as e:
+    except (OSError, ValueError, RuntimeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         if args.verbose:
             import traceback

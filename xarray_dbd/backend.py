@@ -6,7 +6,6 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import xarray as xr
 from xarray.backends import BackendEntrypoint
 
@@ -28,20 +27,25 @@ class DBDDataStore:
         self.filename = Path(filename)
 
         # Determine cache directory
-        if cache_dir is None:
-            cache_dir = str(self.filename.parent / "cache")
-        else:
-            cache_dir = str(cache_dir)
+        cache_dir = str(self.filename.parent / "cache") if cache_dir is None else str(cache_dir)
 
         # Call C++ backend
-        result = read_dbd_file(
-            str(self.filename),
-            cache_dir=cache_dir,
-            to_keep=to_keep or [],
-            criteria=criteria or [],
-            skip_first_record=skip_first_record,
-            repair=repair,
-        )
+        try:
+            result = read_dbd_file(
+                str(self.filename),
+                cache_dir=cache_dir,
+                to_keep=to_keep or [],
+                criteria=criteria or [],
+                skip_first_record=skip_first_record,
+                repair=repair,
+            )
+        except RuntimeError as e:
+            raise OSError(f"Failed to read {self.filename}: {e}") from e
+
+        required_keys = {"columns", "sensor_names", "sensor_units", "sensor_sizes", "n_records", "header"}
+        missing = required_keys - result.keys()
+        if missing:
+            raise OSError(f"Incomplete result from C++ backend for {self.filename}: missing {missing}")
 
         self._columns = list(result["columns"])
         self._sensor_names = list(result["sensor_names"])
@@ -173,16 +177,19 @@ def open_multi_dbd_dataset(
 
     cache_str = str(cache_dir) if cache_dir else ""
 
-    result = read_dbd_files(
-        file_list,
-        cache_dir=cache_str,
-        to_keep=to_keep or [],
-        criteria=criteria or [],
-        skip_missions=skip_missions or [],
-        keep_missions=keep_missions or [],
-        skip_first_record=skip_first_record,
-        repair=repair,
-    )
+    try:
+        result = read_dbd_files(
+            file_list,
+            cache_dir=cache_str,
+            to_keep=to_keep or [],
+            criteria=criteria or [],
+            skip_missions=skip_missions or [],
+            keep_missions=keep_missions or [],
+            skip_first_record=skip_first_record,
+            repair=repair,
+        )
+    except RuntimeError as e:
+        raise OSError(f"Failed to read {len(file_list)} DBD files: {e}") from e
 
     columns = list(result["columns"])
     sensor_names = list(result["sensor_names"])

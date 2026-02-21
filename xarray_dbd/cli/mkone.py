@@ -45,15 +45,19 @@ def processFiles(
     cache_dir = Path(args.cache) if args.cache else None
 
     # Read the files
-    ds = xdbd.open_multi_dbd_dataset(
-        [Path(f) for f in filenames],
-        skip_first_record=not args.keepFirst,
-        repair=args.repair,
-        to_keep=to_keep,
-        skip_missions=skip_missions,
-        keep_missions=keep_missions,
-        cache_dir=cache_dir,
-    )
+    try:
+        ds = xdbd.open_multi_dbd_dataset(
+            [Path(f) for f in filenames],
+            skip_first_record=not args.keepFirst,
+            repair=args.repair,
+            to_keep=to_keep,
+            skip_missions=skip_missions,
+            keep_missions=keep_missions,
+            cache_dir=cache_dir,
+        )
+    except (OSError, ValueError, RuntimeError) as e:
+        logging.error("Failed to read files for %s: %s", ofn, e)
+        return
 
     if len(ds.data_vars) == 0:
         logging.warning("No data variables for %s, skipping", ofn)

@@ -18,6 +18,8 @@ designed to match or exceed the performance of the original
 
 ## Installation
 
+**Requires Python 3.13+**
+
 ```bash
 pip install xarray-dbd
 ```
@@ -28,7 +30,7 @@ For the CLI tools only:
 pipx install xarray-dbd   # installs dbd2nc and mkone commands
 ```
 
-Or install from source:
+Or install from source (requires a C++ compiler and CMake):
 
 ```bash
 git clone https://github.com/mousebrains/dbd2netcdf-python
