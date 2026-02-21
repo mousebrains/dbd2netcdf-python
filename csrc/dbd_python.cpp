@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -286,15 +287,16 @@ py::array typed_column_to_numpy(TypedColumn&& col) {
         using VecType = std::decay_t<decltype(vec)>;
         using T = typename VecType::value_type;
 
-        auto* heap_vec = new VecType(std::move(vec));
-        auto capsule = py::capsule(heap_vec, [](void* p) {
+        auto heap_vec = std::make_unique<VecType>(std::move(vec));
+        auto* raw = heap_vec.release();
+        auto capsule = py::capsule(raw, [](void* p) {
             delete static_cast<VecType*>(p);
         });
 
         return py::array_t<T>(
-            {static_cast<py::ssize_t>(heap_vec->size())},
+            {static_cast<py::ssize_t>(raw->size())},
             {sizeof(T)},
-            heap_vec->data(),
+            raw->data(),
             capsule
         );
     }, std::move(col));

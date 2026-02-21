@@ -12,6 +12,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cpp-lint:
+    name: C++ Static Analysis
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install clang-tidy and build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy
+          python -m pip install --upgrade pip
+          pip install pybind11[global] scikit-build-core cmake
+
+      - name: Run clang-tidy via CMake build
+        run: |
+          cmake -B build -DENABLE_CLANG_TIDY=ON \
+            -Dpybind11_DIR=$(python -c "import pybind11; print(pybind11.get_cmake_dir())")
+          cmake --build build 2>&1 | tee clang-tidy-output.txt
+
+      - name: Check for clang-tidy warnings
+        run: |
+          if grep -q "warning:" clang-tidy-output.txt; then
+            echo "::warning::clang-tidy found warnings (see build log above)"
+            grep "warning:" clang-tidy-output.txt | head -30
+          else
+            echo "No clang-tidy warnings found"
+          fi
+
   lint:
     name: Lint and Format
     runs-on: ubuntu-latest

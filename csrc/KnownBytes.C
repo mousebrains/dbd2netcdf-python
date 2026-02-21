@@ -48,7 +48,9 @@ KnownBytes::KnownBytes(std::istream& is)
   static_assert(sizeof(double) == 8, "sizeof(double) != 8");
 
   if (tag != 's') {
-    throw(MyException("Error known bytes cycle tag(%c) != 's'"));
+    std::ostringstream oss;
+    oss << "Error known bytes cycle tag(0x" << std::hex << static_cast<int>(tag) << ") != 's'";
+    throw MyException(oss.str());
   }
 
 

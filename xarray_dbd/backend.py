@@ -180,7 +180,8 @@ class DBDBackendEntrypoint(BackendEntrypoint):
         attrs_dict = store.get_attrs()
 
         if drop_variables:
-            vars_dict = {k: v for k, v in vars_dict.items() if k not in drop_variables}
+            drop_set = set(drop_variables)
+            vars_dict = {k: v for k, v in vars_dict.items() if k not in drop_set}
 
         return xr.Dataset(vars_dict, attrs=attrs_dict)
 
@@ -300,6 +301,9 @@ def open_multi_dbd_dataset(
     >>> ds = open_multi_dbd_dataset(files)
     >>> ds = open_multi_dbd_dataset(files, to_keep=["m_depth", "m_present_time"])
     """
+    if skip_missions and keep_missions:
+        raise ValueError("Cannot specify both skip_missions and keep_missions")
+
     file_list = [str(Path(f)) for f in filenames]
 
     if not file_list:

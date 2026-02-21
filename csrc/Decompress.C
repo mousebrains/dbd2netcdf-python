@@ -38,10 +38,11 @@ int DecompressTWRBuf::underflow() {
     if (!this->mIS.read(frame.data(), n)) { // EOF
       return std::char_traits<char>::eof();
     }
-    const size_t j(LZ4_decompress_safe(frame.data(), this->mBuffer, static_cast<int>(n), sizeof(this->mBuffer)));
-    if (j > sizeof(this->mBuffer)) { // Probably a corrupted file
-      LOG_ERROR("Attempt to decompress lz4 block with too much data: {} > {} in {} (block size {})",
-                j, sizeof(this->mBuffer), this->mFilename, n);
+    const int j = LZ4_decompress_safe(frame.data(), this->mBuffer, static_cast<int>(n), sizeof(this->mBuffer));
+    if (j < 0) { // LZ4 decompression error
+      return std::char_traits<char>::eof();
+    }
+    if (static_cast<size_t>(j) > sizeof(this->mBuffer)) { // Probably a corrupted file
       return std::char_traits<char>::eof();
     }
     this->setg(this->mBuffer, this->mBuffer, this->mBuffer + j);

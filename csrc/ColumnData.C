@@ -11,67 +11,6 @@
 #include <cmath>
 #include <cstring>
 
-namespace {
-
-// Read a value directly into the typed column, bypassing the double cast in Sensor::read().
-template <typename T>
-inline void push_value(TypedColumn& col, size_t row) {
-    auto& vec = std::get<std::vector<T>>(col);
-    if (row >= vec.size()) {
-        vec.resize(vec.size() * 2);
-    }
-}
-
-// Set fill value at position
-inline void set_fill(TypedColumn& col, size_t row) {
-    std::visit([row](auto& vec) {
-        using T = typename std::decay_t<decltype(vec)>::value_type;
-        if (row >= vec.size()) {
-            vec.resize(vec.size() * 2);
-        }
-        vec[row] = T(0);  // Fill value = 0 for all types
-    }, col);
-}
-
-// Set value at position from the appropriate read function
-inline void set_int8(TypedColumn& col, size_t row, int8_t val) {
-    auto& vec = std::get<std::vector<int8_t>>(col);
-    if (row >= vec.size()) vec.resize(vec.size() * 2);
-    vec[row] = val;
-}
-
-inline void set_int16(TypedColumn& col, size_t row, int16_t val) {
-    auto& vec = std::get<std::vector<int16_t>>(col);
-    if (row >= vec.size()) vec.resize(vec.size() * 2);
-    vec[row] = val;
-}
-
-inline void set_float(TypedColumn& col, size_t row, float val) {
-    auto& vec = std::get<std::vector<float>>(col);
-    if (row >= vec.size()) vec.resize(vec.size() * 2);
-    vec[row] = val;
-}
-
-inline void set_double(TypedColumn& col, size_t row, double val) {
-    auto& vec = std::get<std::vector<double>>(col);
-    if (row >= vec.size()) vec.resize(vec.size() * 2);
-    vec[row] = val;
-}
-
-// Copy previous value at a position
-inline void copy_prev(TypedColumn& col, size_t row, const TypedColumn& prev_col, size_t /*unused*/) {
-    std::visit([row](auto& vec, const auto& prev_vec) {
-        using T = typename std::decay_t<decltype(vec)>::value_type;
-        using PT = typename std::decay_t<decltype(prev_vec)>::value_type;
-        if constexpr (std::is_same_v<T, PT>) {
-            if (row >= vec.size()) vec.resize(vec.size() * 2);
-            // prev value stored separately
-        }
-    }, col, prev_col);
-}
-
-} // anonymous namespace
-
 ColumnDataResult read_columns(std::istream& is,
                               const KnownBytes& kb,
                               const Sensors& sensors,
@@ -93,7 +32,6 @@ ColumnDataResult read_columns(std::istream& is,
     sensorInfo.reserve(nToStore);
 
     {
-        int outIdx = 0;
         for (size_t i = 0; i < nSensors; ++i) {
             const Sensor& s = sensors[i];
             if (s.qKeep()) {
