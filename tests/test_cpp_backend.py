@@ -22,6 +22,7 @@ RAW_DIR = Path(os.getenv("DBD_RAW_DIR", "/Users/pat/tpw/mariner/onboard/raw"))
 def test_import():
     """C++ module imports successfully."""
     from xarray_dbd._dbd_cpp import read_dbd_file, read_dbd_files
+
     assert callable(read_dbd_file)
     assert callable(read_dbd_files)
 
@@ -51,7 +52,9 @@ def test_column_dtypes():
     for i, size in enumerate(result["sensor_sizes"]):
         expected = size_to_dtype[size]
         actual = result["columns"][i].dtype
-        assert actual == expected, f"Sensor {result['sensor_names'][i]}: expected {expected}, got {actual}"
+        assert actual == expected, (
+            f"Sensor {result['sensor_names'][i]}: expected {expected}, got {actual}"
+        )
 
 
 def test_skip_first_record():
@@ -148,8 +151,16 @@ def test_record_count_vs_cpp_dbd():
     dbd_files = sorted(RAW_DIR.rglob("*.dcd"))
 
     # Read with same parameters as mkOne.py default
-    skip_missions = ["status.mi", "lastgasp.mi", "initial.mi", "overtime.mi",
-                     "ini0.mi", "ini1.mi", "ini2.mi", "ini3.mi"]
+    skip_missions = [
+        "status.mi",
+        "lastgasp.mi",
+        "initial.mi",
+        "overtime.mi",
+        "ini0.mi",
+        "ini1.mi",
+        "ini2.mi",
+        "ini3.mi",
+    ]
 
     # Read sensor list from reference
     with open(CPP_REF_DIR / "dbd.sensors") as f:
@@ -174,8 +185,16 @@ def test_values_match_cpp_tbd():
 
     tbd_files = sorted(RAW_DIR.rglob("*.tcd"))
 
-    skip_missions = ["status.mi", "lastgasp.mi", "initial.mi", "overtime.mi",
-                     "ini0.mi", "ini1.mi", "ini2.mi", "ini3.mi"]
+    skip_missions = [
+        "status.mi",
+        "lastgasp.mi",
+        "initial.mi",
+        "overtime.mi",
+        "ini0.mi",
+        "ini1.mi",
+        "ini2.mi",
+        "ini3.mi",
+    ]
 
     ds = xdbd.open_multi_dbd_dataset(
         tbd_files,
@@ -189,16 +208,18 @@ def test_values_match_cpp_tbd():
 
     for v in common:
         py_data = ds[v].values.flatten()
-        cpp_data = ref[v].values.flatten()[:len(py_data)]
+        cpp_data = ref[v].values.flatten()[: len(py_data)]
 
         if np.issubdtype(py_data.dtype, np.floating):
-            assert np.allclose(py_data, cpp_data, rtol=1e-6, equal_nan=True), \
+            assert np.allclose(py_data, cpp_data, rtol=1e-6, equal_nan=True), (
                 f"{v}: float values don't match"
+            )
         else:
             # For int types, NaN in C++ corresponds to 0 in our output
             mask = ~np.isnan(cpp_data)
-            assert np.array_equal(py_data[mask].astype(np.float64), cpp_data[mask]), \
+            assert np.array_equal(py_data[mask].astype(np.float64), cpp_data[mask]), (
                 f"{v}: int values don't match (where C++ is non-NaN)"
+            )
 
     ds.close()
     ref.close()

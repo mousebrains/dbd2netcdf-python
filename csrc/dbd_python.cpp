@@ -20,6 +20,7 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace py = pybind11;
 namespace fs = std::filesystem;
@@ -235,6 +236,12 @@ MultiFileResult parse_multiple_files(
         }
     }
 
+    // Build name-to-index map for O(1) lookup during merge
+    std::unordered_map<std::string, int> unionNameIndex;
+    for (size_t i = 0; i < nOut; ++i) {
+        unionNameIndex[unionInfo[i].name] = static_cast<int>(i);
+    }
+
     // Copy data into union columns
     size_t offset = 0;
     for (size_t fi = 0; fi < allData.size(); ++fi) {
@@ -249,14 +256,9 @@ MultiFileResult parse_multiple_files(
 
         for (size_t ci = 0; ci < fd.result.columns.size(); ++ci) {
             const std::string& name = fd.result.sensor_info[ci].name;
-            int unionIdx = -1;
-            for (size_t ui = 0; ui < nOut; ++ui) {
-                if (unionInfo[ui].name == name) {
-                    unionIdx = static_cast<int>(ui);
-                    break;
-                }
-            }
-            if (unionIdx < 0) continue;
+            auto it = unionNameIndex.find(name);
+            if (it == unionNameIndex.end()) continue;
+            int unionIdx = it->second;
 
             std::visit([offset, start, n, unionIdx, &unionColumns](const auto& src_vec) {
                 using T = typename std::decay_t<decltype(src_vec)>::value_type;

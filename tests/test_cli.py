@@ -53,8 +53,7 @@ def test_dbd2nc_missing_file():
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "xarray_dbd.cli.dbd2nc",
-             "-o", tmpname, "/nonexistent/fake.dbd"],
+            [sys.executable, "-m", "xarray_dbd.cli.dbd2nc", "-o", tmpname, "/nonexistent/fake.dbd"],
             capture_output=True,
             text=True,
         )
@@ -80,8 +79,16 @@ def test_dbd2nc_produces_output():
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "xarray_dbd.cli.dbd2nc",
-             "-C", CACHE_DIR, "-o", tmpname, *[str(f) for f in dcd_files]],
+            [
+                sys.executable,
+                "-m",
+                "xarray_dbd.cli.dbd2nc",
+                "-C",
+                CACHE_DIR,
+                "-o",
+                tmpname,
+                *[str(f) for f in dcd_files],
+            ],
             capture_output=True,
             text=True,
         )
@@ -121,8 +128,14 @@ def test_mkone_empty_dir():
         indir = Path(tmpdir) / "input"
         indir.mkdir()
         result = subprocess.run(
-            [sys.executable, "-m", "xarray_dbd.cli.mkone",
-             "--outputPrefix", str(outdir) + "/", str(indir)],
+            [
+                sys.executable,
+                "-m",
+                "xarray_dbd.cli.mkone",
+                "--outputPrefix",
+                str(outdir) + "/",
+                str(indir),
+            ],
             capture_output=True,
             text=True,
         )

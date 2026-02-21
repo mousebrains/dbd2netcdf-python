@@ -83,7 +83,6 @@ target-version = "py313"
 exclude = [
     "build",
     "scripts",
-    "tests",
     "dbd2netcdf",
 ]
 

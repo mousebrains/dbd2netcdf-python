@@ -30,10 +30,10 @@ jobs:
           pip install -e ".[lint]"
 
       - name: Run ruff check
-        run: ruff check xarray_dbd/
+        run: ruff check xarray_dbd/ tests/
 
       - name: Run ruff format check
-        run: ruff format --check xarray_dbd/
+        run: ruff format --check xarray_dbd/ tests/
 
       - name: Run mypy
         run: mypy xarray_dbd/

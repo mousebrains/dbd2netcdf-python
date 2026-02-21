@@ -21,7 +21,7 @@ import xarray_dbd as xdbd
 
 
 def processFiles(
-    ofn: str, filenames: list, args: ArgumentParser, sensorsFilename: str = None
+    ofn: str, filenames: list[str], args: ArgumentParser, sensorsFilename: str | None = None
 ) -> None:
     """Process files using xarray-dbd"""
     stime = time.time()
@@ -36,7 +36,7 @@ def processFiles(
     # Read sensor list if provided
     to_keep = None
     if sensorsFilename:
-        with open(sensorsFilename) as f:
+        with open(sensorsFilename, encoding="utf-8") as f:
             to_keep = [line.strip() for line in f if line.strip()]
 
     # Prepare arguments for xarray-dbd
@@ -78,7 +78,7 @@ def processFiles(
     )
 
 
-def extractSensors(filenames: list, args: ArgumentParser) -> list:
+def extractSensors(filenames: list[str], args: ArgumentParser) -> list[str]:
     """Extract unique sensor names from files"""
     all_sensors = set()
 
@@ -92,14 +92,14 @@ def extractSensors(filenames: list, args: ArgumentParser) -> list:
                 skip_first_record=False,
             )
             all_sensors.update(result["sensor_names"])
-        except Exception as e:
+        except (OSError, RuntimeError, ValueError) as e:
             logging.warning("Error reading %s: %s", filename, e)
 
     return list(all_sensors)
 
 
 def processAll(
-    filenames: list, args: ArgumentParser, suffix: str, sensorsFilename: str = None
+    filenames: list[str], args: ArgumentParser, suffix: str, sensorsFilename: str | None = None
 ) -> None:
     """Process files into a NetCDF"""
     filenames = list(filenames)  # ensure it is a list
@@ -112,27 +112,27 @@ def processAll(
     processFiles(ofn, filenames, args, sensorsFilename)
 
 
-def writeSensors(sensors: set, ofn: str) -> None:
+def writeSensors(sensors: set[str], ofn: str) -> str:
     odir = os.path.dirname(ofn)
     if odir and not os.path.isdir(odir):
         logging.info("Creating %s", odir)
         os.makedirs(odir, mode=0o755, exist_ok=True)
 
-    with open(ofn, "w") as fp:
+    with open(ofn, "w", encoding="utf-8") as fp:
         fp.write("\n".join(sorted(sensors)))
         fp.write("\n")
     return ofn
 
 
-def processDBD(filenames: list, args: ArgumentParser) -> None:
+def processDBD(filenames: list[str], args: ArgumentParser) -> None:
     """Process flight Dinkum Binary files"""
     filenames = list(filenames)
     if not filenames:
         return  # Nothing to do
 
     allSensors = set(extractSensors(filenames, args))
-    dbdSensors = set(filter(lambda x: x.startswith("m_") or x.startswith("c_"), allSensors))
-    sciSensors = set(filter(lambda x: x.startswith("sci_"), allSensors))
+    dbdSensors = {x for x in allSensors if x.startswith(("m_", "c_"))}
+    sciSensors = {x for x in allSensors if x.startswith("sci_")}
     otroSensors = allSensors.difference(dbdSensors).difference(sciSensors)
     sciSensors.add("m_present_time")
     otroSensors.add("m_present_time")
@@ -157,6 +157,8 @@ def discover_files(paths: list[str]) -> dict[str, list[str]]:
         Dict mapping type key ('d', 'e', 's', 't', 'm', 'n') to sorted file lists
     """
     files: dict[str, list[str]] = {}
+    # Single regex matching all DBD type keys, compiled once
+    dbd_pattern = re.compile(r"\.([demnst])[bc]d$", re.IGNORECASE)
 
     for path in paths:
         path = os.path.abspath(os.path.expanduser(path))
@@ -165,17 +167,17 @@ def discover_files(paths: list[str]) -> dict[str, list[str]]:
             # Walk directory tree like mkTwo.py
             for dirpath, _, filenames in os.walk(path):
                 for fn in filenames:
-                    for key in ["d", "e", "m", "n", "s", "t"]:
-                        if re.search(r"[.]" + key + r"[bc]d$", fn, re.IGNORECASE):
-                            files.setdefault(key, []).append(os.path.join(dirpath, fn))
-                            break
+                    m = dbd_pattern.search(fn)
+                    if m:
+                        key = m.group(1).lower()
+                        files.setdefault(key, []).append(os.path.join(dirpath, fn))
         elif os.path.isfile(path):
             # Categorize individual file
             fn = os.path.basename(path)
-            for key in ["d", "e", "m", "n", "s", "t"]:
-                if re.search(r"[.]" + key + r"[bc]d$", fn, re.IGNORECASE):
-                    files.setdefault(key, []).append(path)
-                    break
+            m = dbd_pattern.search(fn)
+            if m:
+                key = m.group(1).lower()
+                files.setdefault(key, []).append(path)
         else:
             logging.warning("%s is not a file or directory, skipping", path)
 

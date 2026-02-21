@@ -6,6 +6,7 @@ Converts Slocum glider DBD files to NetCDF format
 
 import argparse
 import sys
+import tempfile
 from pathlib import Path
 
 import xarray as xr
@@ -16,7 +17,7 @@ import xarray_dbd as xdbd
 def read_sensor_list(filename: Path) -> list[str]:
     """Read sensor names from a file (one per line or comma/space separated)"""
     sensors = []
-    with open(filename) as f:
+    with open(filename, encoding="utf-8") as f:
         for line in f:
             # Remove comments
             line = line.split("#")[0].strip()
@@ -80,7 +81,7 @@ def main():
         "-s",
         "--skipFirst",
         action="store_true",
-        help="Skip first record in each file, but the first",
+        help="Skip first record in each file except the first",
     )
     parser.add_argument(
         "-r", "--repair", action="store_true", help="attempt to repair bad data records"
@@ -157,12 +158,25 @@ def main():
 
         # Write to NetCDF
         if args.append and args.output.exists():
-            # Append mode: read existing, concatenate, write
+            # Append mode: read existing, concatenate, write to temp then rename
             if args.verbose:
                 print(f"Appending to {args.output}")
-            with xr.open_dataset(args.output) as ds_existing:
-                ds_combined = xr.concat([ds_existing, ds], dim="i")
-                ds_combined.to_netcdf(args.output)
+            try:
+                with xr.open_dataset(args.output) as ds_existing:
+                    ds_combined = xr.concat([ds_existing, ds], dim="i")
+                tmp_fd, tmp_path = tempfile.mkstemp(suffix=".nc", dir=args.output.parent)
+                try:
+                    import os
+
+                    os.close(tmp_fd)
+                    ds_combined.to_netcdf(tmp_path)
+                    Path(tmp_path).replace(args.output)
+                except Exception:
+                    Path(tmp_path).unlink(missing_ok=True)
+                    raise
+            except (OSError, ValueError) as e:
+                print(f"Error appending to {args.output}: {e}", file=sys.stderr)
+                return 1
         else:
             if args.verbose:
                 print(f"Writing to {args.output}")

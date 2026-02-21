@@ -89,9 +89,7 @@ class TestOpenDbdDataset:
         assert len(ds_drop.data_vars) == len(ds_all.data_vars) - 1
 
     def test_xr_open_dataset_engine(self):
-        ds = xr.open_dataset(
-            DBD_DIR / "01330000.dcd", engine="dbd", cache_dir=CACHE_DIR
-        )
+        ds = xr.open_dataset(DBD_DIR / "01330000.dcd", engine="dbd", cache_dir=CACHE_DIR)
         assert isinstance(ds, xr.Dataset)
         assert len(ds.data_vars) > 0
 

@@ -135,7 +135,7 @@ class DBDBackendEntrypoint(BackendEntrypoint):
         self,
         filename_or_obj: str | Path,
         *,
-        drop_variables: tuple[str] | None = None,
+        drop_variables: tuple[str, ...] | None = None,
         skip_first_record: bool = True,
         repair: bool = False,
         to_keep: list[str] | None = None,
@@ -349,9 +349,5 @@ def open_multi_dbd_dataset(
     }
 
     ds = xr.Dataset(data_vars, attrs=attrs)
-
-    # To match dbd2netCDF, we need a 'j' dimension with size 1
-    ds = ds.assign_coords(j=xr.DataArray([0], dims=["j"]))
-    ds = ds.drop_vars("j")
 
     return ds
