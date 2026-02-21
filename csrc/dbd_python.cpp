@@ -145,6 +145,26 @@ SingleFileResult parse_single_file(
     };
 }
 
+void grow_union_columns(std::vector<TypedColumn>& cols,
+                        const std::vector<SensorInfo>& info,
+                        size_t new_capacity) {
+    for (size_t i = 0; i < cols.size(); ++i) {
+        std::visit([new_capacity, &info, i](auto& vec) {
+            using T = typename std::decay_t<decltype(vec)>::value_type;
+            size_t old_size = vec.size();
+            if (new_capacity <= old_size) return;
+            vec.resize(new_capacity);
+            // Fill new elements with type-appropriate fill value
+            T fill;
+            if constexpr (std::is_same_v<T, int8_t>)       fill = FILL_INT8;
+            else if constexpr (std::is_same_v<T, int16_t>)  fill = FILL_INT16;
+            else if constexpr (std::is_same_v<T, float>)    fill = NAN;
+            else                                             fill = NAN;
+            std::fill(vec.begin() + old_size, vec.end(), fill);
+        }, cols[i]);
+    }
+}
+
 MultiFileResult parse_multiple_files(
     const std::vector<std::string>& filenames,
     const std::string& cache_dir,
@@ -212,12 +232,28 @@ MultiFileResult parse_multiple_files(
         }
     }
 
-    // Pass 2: read data from each file
-    struct FileData {
-        ColumnDataResult result;
-    };
-    std::vector<FileData> allData;
-    size_t totalRecords = 0;
+    // Pass 2: read each file, copy into union columns, discard per-file data
+    // Build name-to-index map for O(1) lookup during merge
+    std::unordered_map<std::string, int> unionNameIndex;
+    for (size_t i = 0; i < nOut; ++i) {
+        unionNameIndex[unionInfo[i].name] = static_cast<int>(i);
+    }
+
+    // Allocate union columns with initial capacity estimate
+    size_t capacity = valid_files.size() * 8192;
+    std::vector<TypedColumn> unionColumns(nOut);
+    for (size_t i = 0; i < nOut; ++i) {
+        switch (unionInfo[i].size) {
+            case 1: unionColumns[i] = std::vector<int8_t>(capacity, FILL_INT8); break;
+            case 2: unionColumns[i] = std::vector<int16_t>(capacity, FILL_INT16); break;
+            case 4: unionColumns[i] = std::vector<float>(capacity, NAN); break;
+            case 8: unionColumns[i] = std::vector<double>(capacity, NAN); break;
+            default: unionColumns[i] = std::vector<double>(capacity, NAN); break;
+        }
+    }
+
+    size_t offset = 0;
+    size_t fileCount = 0;
 
     for (const auto& fn : valid_files) {
         try {
@@ -238,61 +274,50 @@ MultiFileResult parse_multiple_files(
             ColumnDataResult result = read_columns(is, kb, fileSensors, repair, 1024 * 1024);
 
             size_t n = result.n_records;
-            if (skip_first_record && !allData.empty() && n > 0) {
+            size_t start = 0;
+            if (skip_first_record && fileCount > 0 && n > 0) {
+                start = 1;
                 n -= 1;
             }
-            totalRecords += n;
-            allData.push_back({std::move(result)});
+
+            if (n > 0) {
+                // Grow union columns if needed (doubling strategy)
+                if (offset + n > capacity) {
+                    capacity = std::max(offset + n, capacity * 2);
+                    grow_union_columns(unionColumns, unionInfo, capacity);
+                }
+
+                // Copy from per-file result into union columns
+                for (size_t ci = 0; ci < result.columns.size(); ++ci) {
+                    const std::string& name = result.sensor_info[ci].name;
+                    auto it = unionNameIndex.find(name);
+                    if (it == unionNameIndex.end()) continue;
+                    int unionIdx = it->second;
+
+                    std::visit([offset, start, n, unionIdx, &unionColumns](const auto& src_vec) {
+                        using T = typename std::decay_t<decltype(src_vec)>::value_type;
+                        auto& dst_vec = std::get<std::vector<T>>(unionColumns[unionIdx]);
+                        for (size_t r = 0; r < n; ++r) {
+                            dst_vec[offset + r] = src_vec[start + r];
+                        }
+                    }, result.columns[ci]);
+                }
+                offset += n;
+            }
+            ++fileCount;
+            // result goes out of scope here — per-file memory freed immediately
         } catch (const std::exception&) {
             continue;
         }
     }
 
-    // Allocate union columns
-    std::vector<TypedColumn> unionColumns(nOut);
+    // Trim union columns to actual size
+    size_t totalRecords = offset;
     for (size_t i = 0; i < nOut; ++i) {
-        switch (unionInfo[i].size) {
-            case 1: unionColumns[i] = std::vector<int8_t>(totalRecords, FILL_INT8); break;
-            case 2: unionColumns[i] = std::vector<int16_t>(totalRecords, FILL_INT16); break;
-            case 4: unionColumns[i] = std::vector<float>(totalRecords, NAN); break;
-            case 8: unionColumns[i] = std::vector<double>(totalRecords, NAN); break;
-            default: unionColumns[i] = std::vector<double>(totalRecords, NAN); break;
-        }
-    }
-
-    // Build name-to-index map for O(1) lookup during merge
-    std::unordered_map<std::string, int> unionNameIndex;
-    for (size_t i = 0; i < nOut; ++i) {
-        unionNameIndex[unionInfo[i].name] = static_cast<int>(i);
-    }
-
-    // Copy data into union columns
-    size_t offset = 0;
-    for (size_t fi = 0; fi < allData.size(); ++fi) {
-        auto& fd = allData[fi];
-        size_t n = fd.result.n_records;
-        size_t start = 0;
-        if (skip_first_record && fi > 0 && n > 0) {
-            start = 1;
-            n -= 1;
-        }
-        if (n == 0) continue;
-
-        for (size_t ci = 0; ci < fd.result.columns.size(); ++ci) {
-            const std::string& name = fd.result.sensor_info[ci].name;
-            auto it = unionNameIndex.find(name);
-            if (it == unionNameIndex.end()) continue;
-            int unionIdx = it->second;
-
-            std::visit([offset, start, n, unionIdx, &unionColumns](const auto& src_vec) {
-                using T = typename std::decay_t<decltype(src_vec)>::value_type;
-                auto& dst_vec = std::get<std::vector<T>>(unionColumns[unionIdx]);
-                for (size_t r = 0; r < n; ++r) {
-                    dst_vec[offset + r] = src_vec[start + r];
-                }
-            }, fd.result.columns[ci]);
-        }
-        offset += n;
+        std::visit([totalRecords](auto& vec) {
+            vec.resize(totalRecords);
+            vec.shrink_to_fit();
+        }, unionColumns[i]);
     }
 
     return {
