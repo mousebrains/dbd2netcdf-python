@@ -61,6 +61,16 @@ struct SensorListResult {
     size_t n_files;
 };
 
+struct FileHeaderInfo {
+    std::string filename;
+    std::string mission_name;
+    std::string sensor_list_crc;
+};
+
+struct HeaderScanResult {
+    std::vector<FileHeaderInfo> file_headers;
+};
+
 // ── Pure-C++ parsing (called with GIL released) ────────────────────────
 
 HeaderFields extract_header_fields(const Header& hdr) {
@@ -335,6 +345,44 @@ SensorListResult scan_sensor_list(
     return {std::move(info), n_files};
 }
 
+HeaderScanResult scan_file_headers(
+    const std::vector<std::string>& filenames,
+    const std::vector<std::string>& skip_missions,
+    const std::vector<std::string>& keep_missions)
+{
+    if (filenames.empty()) {
+        return {{}};
+    }
+
+    std::vector<std::string> sorted_files(filenames);
+    std::sort(sorted_files.begin(), sorted_files.end());
+
+    Header::tMissions skipSet, keepSet;
+    for (const auto& m : skip_missions) Header::addMission(m, skipSet);
+    for (const auto& m : keep_missions) Header::addMission(m, keepSet);
+
+    std::vector<FileHeaderInfo> headers;
+
+    for (const auto& fn : sorted_files) {
+        try {
+            DecompressTWR is(fn, qCompressed(fn));
+            if (!is) continue;
+            Header hdr(is, fn.c_str());
+            if (hdr.empty()) continue;
+            if (!hdr.qProcessMission(skipSet, keepSet)) continue;
+            headers.push_back({
+                fn,
+                hdr.find("mission_name"),
+                hdr.find("sensor_list_crc"),
+            });
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+
+    return {std::move(headers)};
+}
+
 // ── Python conversion helpers (called with GIL held) ───────────────────
 
 py::array typed_column_to_numpy(TypedColumn&& col) {
@@ -516,5 +564,35 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
         py::arg("keep_missions") = std::vector<std::string>(),
         "Scan DBD file headers and return the unified sensor list without reading data.\n\n"
         "Returns a dict with keys: sensor_names, sensor_units, sensor_sizes, n_files"
+    );
+
+    m.def("scan_headers",
+        [](const std::vector<std::string>& filenames,
+           const std::vector<std::string>& skip_missions,
+           const std::vector<std::string>& keep_missions) -> py::dict {
+            HeaderScanResult result;
+            {
+                py::gil_scoped_release release;
+                result = scan_file_headers(filenames, skip_missions, keep_missions);
+            }
+            py::list out_filenames;
+            py::list out_missions;
+            py::list out_crcs;
+            for (const auto& fh : result.file_headers) {
+                out_filenames.append(fh.filename);
+                out_missions.append(fh.mission_name);
+                out_crcs.append(fh.sensor_list_crc);
+            }
+            py::dict out;
+            out["filenames"] = out_filenames;
+            out["mission_names"] = out_missions;
+            out["sensor_list_crcs"] = out_crcs;
+            return out;
+        },
+        py::arg("filenames"),
+        py::arg("skip_missions") = std::vector<std::string>(),
+        py::arg("keep_missions") = std::vector<std::string>(),
+        "Scan DBD file headers and return per-file mission names and CRCs.\n\n"
+        "Returns a dict with keys: filenames, mission_names, sensor_list_crcs"
     );
 }

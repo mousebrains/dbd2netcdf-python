@@ -7,7 +7,7 @@ directly without conversion to NetCDF, using a C++ parser via pybind11.
 
 from importlib.metadata import version
 
-from ._dbd_cpp import read_dbd_file, read_dbd_files, scan_sensors
+from ._dbd_cpp import read_dbd_file, read_dbd_files, scan_headers, scan_sensors
 from .backend import (
     DBDBackendEntrypoint,
     open_dbd_dataset,
@@ -19,6 +19,7 @@ __all__ = [
     "DBDBackendEntrypoint",
     "read_dbd_file",
     "read_dbd_files",
+    "scan_headers",
     "scan_sensors",
     "open_dbd_dataset",
     "open_multi_dbd_dataset",

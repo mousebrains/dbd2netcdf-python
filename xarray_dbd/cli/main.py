@@ -13,7 +13,7 @@ import sys
 from argparse import ArgumentParser
 
 import xarray_dbd as xdbd
-from xarray_dbd.cli import csv, dbd2nc, mkone, sensors
+from xarray_dbd.cli import cache, csv, dbd2nc, missions, mkone, sensors
 
 
 def main():
@@ -34,6 +34,8 @@ def main():
     dbd2nc.addArgs(subparsers)
     csv.addArgs(subparsers)
     sensors.addArgs(subparsers)
+    missions.addArgs(subparsers)
+    cache.addArgs(subparsers)
     mkone.addArgs(subparsers)
 
     args = parser.parse_args()
