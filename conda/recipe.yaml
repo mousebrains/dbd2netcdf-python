@@ -1,0 +1,60 @@
+# conda-forge recipe template for xarray-dbd
+# To submit: fork conda-forge/staged-recipes, copy this to recipes/xarray-dbd/recipe.yaml,
+# update version/sha256, and open a PR.
+
+schema_version: 1
+
+context:
+  name: xarray-dbd
+  version: "0.1.0"
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  url: https://pypi.org/packages/source/x/xarray-dbd/xarray_dbd-${{ version }}.tar.gz
+  sha256: PLACEHOLDER
+
+build:
+  number: 0
+  script: ${{ PYTHON }} -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  build:
+    - ${{ compiler('c') }}
+    - ${{ compiler('cxx') }}
+    - cmake >=3.17
+    - ninja
+  host:
+    - python >=3.13
+    - pip
+    - scikit-build-core >=0.5
+    - pybind11 >=2.11
+    - pybind11-abi
+    - numpy >=1.23,<3.0
+  run:
+    - python >=3.13
+    - numpy >=1.23,<3.0
+    - xarray >=2023.6.0
+
+tests:
+  - python:
+      imports:
+        - xarray_dbd
+        - xarray_dbd._dbd_cpp
+      pip_check: true
+  - script:
+      - dbd2nc --help
+      - mkone --help
+
+about:
+  summary: Efficient xarray backend for reading Slocum ocean glider DBD files
+  license: GPL-3.0-only
+  license_file: License.txt
+  homepage: https://github.com/mousebrains/dbd2netcdf-python
+  repository: https://github.com/mousebrains/dbd2netcdf-python
+
+extra:
+  recipe-maintainers:
+    - mousebrains

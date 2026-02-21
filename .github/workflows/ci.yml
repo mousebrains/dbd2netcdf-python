@@ -25,13 +25,32 @@ jobs:
           pip install ruff mypy
 
       - name: Run ruff check
-        run: ruff check xarray_dbd/ dbd2nc.py mkOne.py
+        run: ruff check xarray_dbd/
 
       - name: Run ruff format check
-        run: ruff format --check xarray_dbd/ dbd2nc.py mkOne.py
+        run: ruff format --check xarray_dbd/
 
       - name: Run mypy
         run: mypy xarray_dbd/
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install .
+
+      - name: Audit dependencies
+        uses: pypa/gh-action-pip-audit@v1.1.0
 
   test:
     name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
