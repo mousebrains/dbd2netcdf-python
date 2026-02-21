@@ -42,8 +42,7 @@ dev = [
 ]
 
 [project.scripts]
-dbd2nc = "xarray_dbd.cli.dbd2nc:main"
-mkone = "xarray_dbd.cli.mkone:main"
+xdbd = "xarray_dbd.cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/mousebrains/dbd2netcdf-python"
@@ -104,7 +103,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "xarray_dbd/cli/mkone.py" = ["N802", "N803", "N806", "E701"]  # Legacy naming conventions
-"xarray_dbd/cli/dbd2nc.py" = ["SIM102"]  # Allow nested ifs for clarity
+"xarray_dbd/cli/dbd2nc.py" = ["N802", "SIM102"]  # Legacy naming, nested ifs
+"xarray_dbd/cli/logger.py" = ["N802", "N803", "N806"]  # Match TPWUtils naming conventions
+"xarray_dbd/cli/sensors.py" = ["N802"]  # Match subparser naming
+"xarray_dbd/cli/csv.py" = ["N802", "SIM115"]  # Match subparser naming, stdout fallback
 
 [tool.ruff.format]
 quote-style = "double"
@@ -128,7 +130,7 @@ module = ["lz4.*", "xarray.*", "xarray_dbd._dbd_cpp"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["xarray_dbd.cli.mkone", "xarray_dbd.cli.dbd2nc"]
+module = ["xarray_dbd.cli.*"]
 disable_error_code = ["assignment", "arg-type", "attr-defined", "func-returns-value", "var-annotated", "return-value"]
 
 [tool.pytest.ini_options]

@@ -18,6 +18,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 import xarray_dbd as xdbd
+from xarray_dbd.cli import logger
 
 
 def processFiles(
@@ -188,19 +189,21 @@ def discover_files(paths: list[str]) -> dict[str, list[str]]:
     return files
 
 
-def main():
-    """Main entry point for mkone command"""
-    parser = ArgumentParser()
+def addArgs(subparsers) -> None:
+    """Register the 'mkone' subcommand."""
+    parser = subparsers.add_parser(
+        "mkone",
+        help="Batch process directories of DBD files",
+        description="Discover and convert directories of Slocum glider DBD files to NetCDF",
+    )
     parser.add_argument(
         "path",
         type=str,
         nargs="+",
         help="Dinkum binary files or directories to convert",
     )
-
     grp = parser.add_argument_group(description="Processing options")
     grp.add_argument("--cache", type=str, default="cache", help="Directory for sensor cache files")
-    grp.add_argument("--verbose", action="store_true", help="Verbose output")
     grp.add_argument("--repair", action="store_true", help="Should corrupted files be 'repaired'")
     grp.add_argument(
         "--keepFirst",
@@ -214,15 +217,16 @@ def main():
     grp = parser.add_argument_group(description="Output related arguments")
     grp.add_argument("--outputPrefix", type=str, required=True, help="Output prefix")
 
-    args = parser.parse_args()
+    logger.addArgs(parser)
+    parser.set_defaults(func=run)
 
-    logging.basicConfig(
-        format="%(asctime)s %(levelname)s: %(message)s",
-        level=logging.DEBUG if args.verbose else logging.INFO,
-    )
+
+def run(args) -> int:
+    """Execute the mkone batch processing."""
+    logger.mkLogger(args)
 
     if args.exclude is None and args.include is None:
-        args.exclude = (  # Default missions to exclude
+        args.exclude = (
             "status.mi",
             "lastgasp.mi",
             "initial.mi",
@@ -241,11 +245,8 @@ def main():
 
     stime = time.time()
 
-    # Discover files from paths (directories or explicit files)
     files = discover_files(args.path)
 
-    # Process each type sequentially to avoid memory exhaustion.
-    # Each type already uses ProcessPoolExecutor for parallelism internally.
     if "d" in files:
         processDBD(files["d"], args)
 
@@ -257,5 +258,34 @@ def main():
     return 0
 
 
+def main():
+    """Standalone entry point for mkone command."""
+    parser = ArgumentParser()
+    parser.add_argument(
+        "path",
+        type=str,
+        nargs="+",
+        help="Dinkum binary files or directories to convert",
+    )
+    grp = parser.add_argument_group(description="Processing options")
+    grp.add_argument("--cache", type=str, default="cache", help="Directory for sensor cache files")
+    grp.add_argument("--repair", action="store_true", help="Should corrupted files be 'repaired'")
+    grp.add_argument(
+        "--keepFirst",
+        action="store_true",
+        help="Should the first record not be discarded on all the files?",
+    )
+    g = grp.add_mutually_exclusive_group()
+    g.add_argument("--exclude", type=str, action="append", help="Mission(s) to exclude")
+    g.add_argument("--include", type=str, action="append", help="Mission(s) to include")
+
+    grp = parser.add_argument_group(description="Output related arguments")
+    grp.add_argument("--outputPrefix", type=str, required=True, help="Output prefix")
+
+    logger.addArgs(parser)
+    args = parser.parse_args()
+    sys.exit(run(args))
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

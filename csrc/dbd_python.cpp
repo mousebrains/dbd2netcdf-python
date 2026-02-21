@@ -56,6 +56,11 @@ struct MultiFileResult {
     size_t n_files;
 };
 
+struct SensorListResult {
+    std::vector<SensorInfo> sensor_info;
+    size_t n_files;
+};
+
 // ── Pure-C++ parsing (called with GIL released) ────────────────────────
 
 HeaderFields extract_header_fields(const Header& hdr) {
@@ -280,6 +285,56 @@ MultiFileResult parse_multiple_files(
     };
 }
 
+SensorListResult scan_sensor_list(
+    const std::vector<std::string>& filenames,
+    const std::string& cache_dir,
+    const std::vector<std::string>& skip_missions,
+    const std::vector<std::string>& keep_missions)
+{
+    if (filenames.empty()) {
+        return {{}, 0};
+    }
+
+    std::vector<std::string> sorted_files(filenames);
+    std::sort(sorted_files.begin(), sorted_files.end());
+
+    Header::tMissions skipSet, keepSet;
+    for (const auto& m : skip_missions) Header::addMission(m, skipSet);
+    for (const auto& m : keep_missions) Header::addMission(m, keepSet);
+
+    SensorsMap smap(cache_dir);
+    size_t n_files = 0;
+
+    for (const auto& fn : sorted_files) {
+        try {
+            DecompressTWR is(fn, qCompressed(fn));
+            if (!is) continue;
+            Header hdr(is, fn.c_str());
+            if (hdr.empty()) continue;
+            if (!hdr.qProcessMission(skipSet, keepSet)) continue;
+            smap.insert(is, hdr, false);
+            ++n_files;
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+
+    if (n_files == 0) {
+        return {{}, 0};
+    }
+
+    smap.setUpForData();
+    const Sensors& allSensors = smap.allSensors();
+
+    std::vector<SensorInfo> info;
+    for (size_t i = 0; i < allSensors.size(); ++i) {
+        const Sensor& s = allSensors[i];
+        info.push_back({s.name(), s.units(), s.size()});
+    }
+
+    return {std::move(info), n_files};
+}
+
 // ── Python conversion helpers (called with GIL held) ───────────────────
 
 py::array typed_column_to_numpy(TypedColumn&& col) {
@@ -427,5 +482,39 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
         "Read multiple DBD files with sensor union and return concatenated data.\n\n"
         "Returns a dict with keys: columns, sensor_names, sensor_units, "
         "sensor_sizes, n_records, n_files"
+    );
+
+    m.def("scan_sensors",
+        [](const std::vector<std::string>& filenames,
+           const std::string& cache_dir,
+           const std::vector<std::string>& skip_missions,
+           const std::vector<std::string>& keep_missions) -> py::dict {
+            SensorListResult result;
+            {
+                py::gil_scoped_release release;
+                result = scan_sensor_list(filenames, cache_dir,
+                                          skip_missions, keep_missions);
+            }
+            py::list sensor_names;
+            py::list sensor_units;
+            py::list sensor_sizes;
+            for (const auto& si : result.sensor_info) {
+                sensor_names.append(si.name);
+                sensor_units.append(si.units);
+                sensor_sizes.append(si.size);
+            }
+            py::dict out;
+            out["sensor_names"] = sensor_names;
+            out["sensor_units"] = sensor_units;
+            out["sensor_sizes"] = sensor_sizes;
+            out["n_files"] = result.n_files;
+            return out;
+        },
+        py::arg("filenames"),
+        py::arg("cache_dir") = "",
+        py::arg("skip_missions") = std::vector<std::string>(),
+        py::arg("keep_missions") = std::vector<std::string>(),
+        "Scan DBD file headers and return the unified sensor list without reading data.\n\n"
+        "Returns a dict with keys: sensor_names, sensor_units, sensor_sizes, n_files"
     );
 }

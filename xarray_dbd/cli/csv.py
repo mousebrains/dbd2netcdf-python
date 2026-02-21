@@ -1,42 +1,30 @@
-#!/usr/bin/env python3
-"""
-Convert Slocum glider DBD files to NetCDF format.
-"""
+#
+# 2csv subcommand — equivalent to C++ dbd2csv
+#
+# Reads DBD files and outputs CSV.
+#
+# Feb-2026, Pat Welch, pat@mousebrains.com
 
 import logging
 import sys
-import tempfile
 from argparse import ArgumentParser
 from pathlib import Path
 
-import xarray as xr
+import numpy as np
 
 import xarray_dbd as xdbd
 from xarray_dbd.cli import logger
-
-
-def read_sensor_list(filename: Path) -> list[str]:
-    """Read sensor names from a file (one per line or comma/space separated)"""
-    sensors = []
-    with open(filename, encoding="utf-8") as f:
-        for line in f:
-            line = line.split("#")[0].strip()
-            if not line:
-                continue
-            parts = line.replace(",", " ").split()
-            sensors.extend(parts)
-    return sensors
+from xarray_dbd.cli.dbd2nc import read_sensor_list
 
 
 def addArgs(subparsers) -> None:
-    """Register the '2nc' subcommand."""
+    """Register the '2csv' subcommand."""
     parser = subparsers.add_parser(
-        "2nc",
-        help="Convert DBD files to NetCDF",
-        description="Convert Slocum glider DBD files to NetCDF format",
+        "2csv",
+        help="Convert DBD files to CSV",
+        description="Read Slocum glider DBD files and output CSV",
     )
     parser.add_argument("files", nargs="+", type=Path, help="DBD files to process")
-    parser.add_argument("-a", "--append", action="store_true", help="Append to the NetCDF file")
     parser.add_argument(
         "-c",
         "--sensors",
@@ -77,8 +65,7 @@ def addArgs(subparsers) -> None:
         "--output",
         type=Path,
         metavar="filename",
-        required=True,
-        help="Where to store the data",
+        help="Where to store the CSV (default: stdout)",
     )
     parser.add_argument(
         "-s",
@@ -97,7 +84,7 @@ def addArgs(subparsers) -> None:
 
 
 def run(args) -> int:
-    """Execute the 2nc / dbd2nc conversion."""
+    """Execute the 2csv subcommand."""
     logger.mkLogger(args)
 
     for f in args.files:
@@ -111,7 +98,6 @@ def run(args) -> int:
             logging.error("Sensors file not found: %s", args.sensors)
             return 1
         criteria = read_sensor_list(args.sensors)
-        logging.info("Loaded %d criteria sensors from %s", len(criteria), args.sensors)
 
     to_keep = None
     if args.sensorOutput:
@@ -119,7 +105,6 @@ def run(args) -> int:
             logging.error("Sensor output file not found: %s", args.sensorOutput)
             return 1
         to_keep = read_sensor_list(args.sensorOutput)
-        logging.info("Loaded %d output sensors from %s", len(to_keep), args.sensorOutput)
 
     cache_dir = args.cache
     if cache_dir is None and len(args.files) > 0:
@@ -128,12 +113,7 @@ def run(args) -> int:
         logging.warning("Cache directory not found: %s", cache_dir)
         cache_dir = None
 
-    if args.output.exists() and not args.append:
-        logging.info("Overwriting existing file: %s", args.output)
-
     try:
-        logging.info("Processing %d file(s)...", len(args.files))
-
         ds = xdbd.open_multi_dbd_dataset(
             args.files,
             skip_first_record=args.skipFirst,
@@ -144,50 +124,44 @@ def run(args) -> int:
             keep_missions=args.keepMission,
             cache_dir=cache_dir,
         )
-
-        logging.info("Read %d records", len(ds.i))
-        logging.info("Output %d variables", len(ds.data_vars))
-
-        if args.append and args.output.exists():
-            logging.info("Appending to %s", args.output)
-            try:
-                with xr.open_dataset(args.output) as ds_existing:
-                    ds_combined = xr.concat([ds_existing, ds], dim="i")
-                tmp_fd, tmp_path = tempfile.mkstemp(suffix=".nc", dir=args.output.parent)
-                try:
-                    import os
-
-                    os.close(tmp_fd)
-                    ds_combined.to_netcdf(tmp_path)
-                    Path(tmp_path).replace(args.output)
-                except Exception:
-                    Path(tmp_path).unlink(missing_ok=True)
-                    raise
-            except (OSError, ValueError) as e:
-                logging.error("Error appending to %s: %s", args.output, e)
-                return 1
-        else:
-            logging.info("Writing to %s", args.output)
-            ds.to_netcdf(args.output)
-
-        logging.info("Successfully wrote %s", args.output)
-        return 0
-
     except (OSError, ValueError, RuntimeError) as e:
-        logging.error("Error: %s", e)
-        logging.debug("Traceback:", exc_info=True)
+        logging.error("Error reading files: %s", e)
         return 1
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        fp = open(args.output, "w", encoding="utf-8")
+    else:
+        fp = sys.stdout
+
+    try:
+        var_names = list(ds.data_vars)
+        fp.write(",".join(var_names) + "\n")
+
+        n_records = len(ds.i)
+        for r in range(n_records):
+            vals = []
+            for name in var_names:
+                v = ds[name].values[r]
+                if isinstance(v, (float, np.floating)) and np.isnan(v):
+                    vals.append("")
+                else:
+                    vals.append(str(v))
+            fp.write(",".join(vals) + "\n")
+    finally:
+        if fp is not sys.stdout:
+            fp.close()
+
+    logging.info("Wrote %d records, %d variables", n_records, len(var_names))
+    return 0
 
 
 def main():
-    """Standalone entry point for dbd2nc."""
+    """Standalone entry point."""
     parser = ArgumentParser(
-        description="Convert Slocum glider DBD files to NetCDF format",
-        formatter_class=ArgumentParser().formatter_class,
-        epilog="Report bugs to pat@mousebrains.com",
+        description="Convert Slocum glider DBD files to CSV",
     )
     parser.add_argument("files", nargs="+", type=Path, help="DBD files to process")
-    parser.add_argument("-a", "--append", action="store_true", help="Append to the NetCDF file")
     parser.add_argument(
         "-c",
         "--sensors",
@@ -228,8 +202,7 @@ def main():
         "--output",
         type=Path,
         metavar="filename",
-        required=True,
-        help="Where to store the data",
+        help="Where to store the CSV (default: stdout)",
     )
     parser.add_argument(
         "-s",
@@ -242,12 +215,6 @@ def main():
         "--repair",
         action="store_true",
         help="Attempt to repair bad data records",
-    )
-    parser.add_argument(
-        "-V",
-        "--version",
-        action="version",
-        version=f"%(prog)s {xdbd.__version__}",
     )
     logger.addArgs(parser)
     args = parser.parse_args()
