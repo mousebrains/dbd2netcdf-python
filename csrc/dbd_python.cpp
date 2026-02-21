@@ -226,6 +226,14 @@ MultiFileResult parse_multiple_files(
             Header hdr(is, fn.c_str());
             if (hdr.empty()) continue;
             const Sensors& fileSensors = smap.find(hdr);
+            // Skip inline sensor lines for unfactored files (pass 1 consumed
+            // them via Sensors(is,hdr), but find() does no stream I/O).
+            if (!hdr.qFactored()) {
+                for (int i = hdr.nSensors(); i > 0; --i) {
+                    std::string line;
+                    std::getline(is, line);
+                }
+            }
             KnownBytes kb(is);
             ColumnDataResult result = read_columns(is, kb, fileSensors, repair, 1024 * 1024);
 
