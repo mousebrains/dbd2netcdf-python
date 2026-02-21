@@ -170,11 +170,11 @@ jobs:
           pip install .
           dbd2nc --help
           mkone --help
-          python -c "import xarray_dbd; print(xarray_dbd.__version__)"
+          cd /tmp && python -c "import xarray_dbd; print(xarray_dbd.__version__)"
 
       - name: Test pipx install
         run: |
           pip install pipx
           pipx install .
-          dbd2nc --help
-          mkone --help
+          cd /tmp && dbd2nc --help
+          cd /tmp && mkone --help
