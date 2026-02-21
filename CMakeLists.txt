@@ -12,7 +12,7 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
 
-find_package(pybind11 2.11...<2.14 CONFIG REQUIRED)
+find_package(pybind11 2.11...4 CONFIG REQUIRED)
 
 pybind11_add_module(_dbd_cpp
     csrc/dbd_python.cpp
