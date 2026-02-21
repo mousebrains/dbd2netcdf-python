@@ -103,7 +103,6 @@ jobs:
   test-free-threaded:
     name: Test Free-threaded Python 3.13t
     runs-on: ubuntu-latest
-    continue-on-error: true  # Experimental: pybind11 free-threaded support is WIP
     steps:
       - uses: actions/checkout@v4
 
