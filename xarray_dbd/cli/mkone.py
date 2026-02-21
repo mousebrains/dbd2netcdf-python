@@ -3,65 +3,33 @@
 # Modified version of mkOne.py to use the Python xarray-dbd implementation
 # instead of the C++ dbd2netCDF
 #
+# Supports both directory walking (like mkTwo.py) and explicit file lists.
+#
 # Oct-2023, Pat Welch, pat@mousebrains.com
 # Modified Jan-2025 to use xarray-dbd
+# Modified Feb-2026 for directory walking and performance
 
 import logging
 import os
-import queue
 import re
 import sys
-import threading
 import time
 from argparse import ArgumentParser
 from pathlib import Path
 
-# Add xarray-dbd to path
-sys.path.insert(0, str(Path(__file__).parent))
 import xarray_dbd as xdbd
-
-
-class RunCommand(threading.Thread):
-    # Class-level queue to collect exceptions from all threads
-    __exception_queue = queue.Queue()
-
-    def __init__(
-        self, name: str, ofn: str, filenames: list, args, sensorsFilename: str = None
-    ) -> None:
-        threading.Thread.__init__(self)
-        self.name = name
-        self.__ofn = ofn
-        self.__filenames = filenames
-        self.__args = args
-        self.__sensorsFilename = sensorsFilename
-
-    def run(self):  # Called on start
-        try:
-            stime = time.time()
-            processFiles(self.__ofn, self.__filenames, self.__args, self.__sensorsFilename)
-            logging.info("Took %s wall clock seconds", f"{time.time() - stime:.2f}")
-        except Exception as e:
-            logging.exception("Executing")
-            # Push exception to queue so main thread can detect it
-            self.__exception_queue.put((self.name, e))
-
-    @classmethod
-    def check_exceptions(cls):
-        """Check if any thread raised an exception and re-raise it"""
-        if not cls.__exception_queue.empty():
-            name, exception = cls.__exception_queue.get()
-            raise RuntimeError(f"Thread {name} failed") from exception
 
 
 def processFiles(
     ofn: str, filenames: list, args: ArgumentParser, sensorsFilename: str = None
 ) -> None:
     """Process files using xarray-dbd"""
-    logging.info("%s files", len(filenames))
+    stime = time.time()
+    logging.info("%s: %s files", ofn, len(filenames))
 
     # Make sure the directory of the output file exists
     odir = os.path.dirname(ofn)
-    if not os.path.isdir(odir):
+    if odir and not os.path.isdir(odir):
         logging.info("Creating %s", odir)
         os.makedirs(odir, mode=0o755, exist_ok=True)
 
@@ -87,23 +55,34 @@ def processFiles(
         cache_dir=cache_dir,
     )
 
-    # Write to NetCDF
-    ds.to_netcdf(ofn)
-    logging.info("Wrote %s with %d records and %d variables", ofn, len(ds.i), len(ds.data_vars))
+    if len(ds.data_vars) == 0:
+        logging.warning("No data variables for %s, skipping", ofn)
+        return
+
+    # Write to NetCDF with compression to match C++ dbd2netCDF output
+    encoding = {
+        var: {"zlib": True, "complevel": 5, "chunksizes": (min(5000, len(ds.i)),)}
+        for var in ds.data_vars
+    }
+    ds.to_netcdf(ofn, encoding=encoding)
+    logging.info(
+        "Wrote %s with %d records and %d variables in %.2f seconds",
+        ofn, len(ds.i), len(ds.data_vars), time.time() - stime,
+    )
 
 
 def extractSensors(filenames: list, args: ArgumentParser) -> list:
     """Extract unique sensor names from files"""
     all_sensors = set()
 
-    cache_dir = Path(args.cache) if args.cache else None
+    cache_dir = str(Path(args.cache)) if args.cache else ""
 
     for filename in filenames:
         try:
-            # Read just the header to get sensors
-            reader = xdbd.DBDReader(Path(filename), skip_first_record=False, cache_dir=cache_dir)
-            sensors = reader.sensors.get_output_sensors()
-            all_sensors.update(s.name for s in sensors)
+            result = xdbd.read_dbd_file(
+                str(filename), cache_dir=cache_dir, skip_first_record=False,
+            )
+            all_sensors.update(result["sensor_names"])
         except Exception as e:
             logging.warning("Error reading %s: %s", filename, e)
 
@@ -118,15 +97,15 @@ def processAll(
     if not filenames:
         return  # Nothing to do
 
-    ofn = args.outputPrefix + suffix  # Output filename
+    filenames.sort()  # Sort for consistent processing order
 
-    rc = RunCommand(suffix, ofn, filenames, args, sensorsFilename)
-    rc.start()
+    ofn = args.outputPrefix + suffix  # Output filename
+    processFiles(ofn, filenames, args, sensorsFilename)
 
 
 def writeSensors(sensors: set, ofn: str) -> None:
     odir = os.path.dirname(ofn)
-    if not os.path.isdir(odir):
+    if odir and not os.path.isdir(odir):
         logging.info("Creating %s", odir)
         os.makedirs(odir, mode=0o755, exist_ok=True)
 
@@ -159,10 +138,52 @@ def processDBD(filenames: list, args: ArgumentParser) -> None:
     processAll(filenames, args, "dbd.other.nc", otroFN)
 
 
+def discover_files(paths: list[str]) -> dict[str, list[str]]:
+    """Discover DBD files from paths (directories or file lists).
+
+    For directories, walks recursively matching *.?[bc]d patterns.
+    For files, categorizes them by type key.
+
+    Returns:
+        Dict mapping type key ('d', 'e', 's', 't', 'm', 'n') to sorted file lists
+    """
+    files: dict[str, list[str]] = {}
+
+    for path in paths:
+        path = os.path.abspath(os.path.expanduser(path))
+
+        if os.path.isdir(path):
+            # Walk directory tree like mkTwo.py
+            for dirpath, _, filenames in os.walk(path):
+                for fn in filenames:
+                    for key in ["d", "e", "m", "n", "s", "t"]:
+                        if re.search(r"[.]" + key + r"[bc]d$", fn, re.IGNORECASE):
+                            files.setdefault(key, []).append(os.path.join(dirpath, fn))
+                            break
+        elif os.path.isfile(path):
+            # Categorize individual file
+            fn = os.path.basename(path)
+            for key in ["d", "e", "m", "n", "s", "t"]:
+                if re.search(r"[.]" + key + r"[bc]d$", fn, re.IGNORECASE):
+                    files.setdefault(key, []).append(path)
+                    break
+        else:
+            logging.warning("%s is not a file or directory, skipping", path)
+
+    # Sort file lists for consistent processing order
+    for key in files:
+        files[key].sort()
+
+    return files
+
+
 def main():
     """Main entry point for mkone command"""
     parser = ArgumentParser()
-    parser.add_argument("filename", type=str, nargs="+", help="Dinkum binary files to convert")
+    parser.add_argument(
+        "path", type=str, nargs="+",
+        help="Dinkum binary files or directories to convert",
+    )
 
     grp = parser.add_argument_group(description="Processing options")
     grp.add_argument("--cache", type=str, default="cache", help="Directory for sensor cache files")
@@ -183,7 +204,7 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(
-        format="%(asctime)s %(threadName)s %(levelname)s: %(message)s",
+        format="%(asctime)s %(levelname)s: %(message)s",
         level=logging.DEBUG if args.verbose else logging.INFO,
     )
 
@@ -205,36 +226,21 @@ def main():
         logging.info("Creating %s", args.cache)
         os.makedirs(args.cache, mode=0o755, exist_ok=True)
 
-    files = [os.path.abspath(os.path.expanduser(x)) for x in args.filename]
+    stime = time.time()
 
-    processAll(
-        filter(lambda x: re.search(r"[.]s[bc]d", x, re.IGNORECASE), files), args, "sbd.nc"
-    )  # Flight decimated Dinkum Binary files
-    processAll(
-        filter(lambda x: re.search(r"[.]t[bc]d", x, re.IGNORECASE), files), args, "tbd.nc"
-    )  # Science decimated Dinkum Binary files
-    processAll(
-        filter(lambda x: re.search(r"[.]m[bc]d", x, re.IGNORECASE), files), args, "mbd.nc"
-    )  # Flight decimated Dinkum Binary files
-    processAll(
-        filter(lambda x: re.search(r"[.]n[bc]d", x, re.IGNORECASE), files), args, "nbd.nc"
-    )  # Science decimated Dinkum Binary files
-    processDBD(
-        filter(lambda x: re.search(r"[.]d[bc]d", x, re.IGNORECASE), files), args
-    )  # Flight Dinkum Binary files
-    processAll(
-        filter(lambda x: re.search(r"[.]e[bc]d", x, re.IGNORECASE), files), args, "ebd.nc"
-    )  # Science Dinkum Binary files
+    # Discover files from paths (directories or explicit files)
+    files = discover_files(args.path)
 
-    # Wait for the children to finish
-    for thrd in threading.enumerate():
-        if thrd != threading.main_thread():
-            thrd.join()
+    # Process each type sequentially to avoid memory exhaustion.
+    # Each type already uses ProcessPoolExecutor for parallelism internally.
+    if "d" in files:
+        processDBD(files["d"], args)
 
-    # Check if any thread failed
-    RunCommand.check_exceptions()
+    for key in ["e", "s", "t", "m", "n"]:
+        if key in files:
+            processAll(files[key], args, key + "bd.nc")
 
-    logging.info("All processing complete!")
+    logging.info("All processing complete in %.2f seconds", time.time() - stime)
     return 0
 
 

@@ -22,11 +22,17 @@ designed to match or exceed the performance of the original
 pip install xarray-dbd
 ```
 
+For the CLI tools only:
+
+```bash
+pipx install xarray-dbd   # installs dbd2nc and mkone commands
+```
+
 Or install from source:
 
 ```bash
-git clone <repository-url>
-cd xarray-dbd
+git clone https://github.com/mousebrains/dbd2netcdf-python
+cd dbd2netcdf-python
 pip install -e .
 ```
 
@@ -158,31 +164,15 @@ Open multiple DBD files as a single concatenated xarray Dataset.
 
 **Returns:** `xarray.Dataset`
 
-### `DBDReader(filename, **kwargs)`
-
-Low-level reader class for DBD files.
-
-**Parameters:**
-- `filename` (str or Path): Path to DBD file
-- `skip_first_record` (bool): Skip first data record
-- `repair` (bool): Attempt to repair corrupted records
-- `to_keep` (list of str): Sensor names to keep
-- `criteria` (list of str): Sensor names for selection criteria
-
-**Methods:**
-- `read_data()`: Returns tuple of (data_array, metadata_dict)
-- `get_sensor_metadata()`: Returns dict of sensor metadata
-
 ## Comparison with dbd2netCDF
 
 | Feature | xarray-dbd | dbd2netCDF |
 |---------|------------|------------|
-| Language | Pure Python | C++ |
+| Language | C++ via pybind11 | C++ |
 | xarray integration | Native | Via NetCDF |
 | Installation | `pip install` | Compile from source |
 | Dependencies | numpy, xarray | NetCDF, HDF5 libraries |
 | Performance | Comparable | Fast |
-| Lazy loading | Yes | N/A |
 | Multi-file | Built-in | Manual |
 
 ## Examples
@@ -259,8 +249,8 @@ pytest
 ### Code formatting
 
 ```bash
-black xarray_dbd/
-flake8 xarray_dbd/
+ruff format xarray_dbd/
+ruff check xarray_dbd/
 ```
 
 ## License

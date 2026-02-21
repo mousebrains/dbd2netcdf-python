@@ -132,6 +132,12 @@ dmypy.json
 # macOS
 .DS_Store
 
+# CMake / scikit-build-core build artifacts
+_skbuild/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
 # Project specific
 dbd2netcdf/
 cache/

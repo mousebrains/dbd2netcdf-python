@@ -2,21 +2,23 @@
 xarray-dbd: An efficient xarray backend for Dinkum Binary Data (DBD) files
 
 This package provides an xarray backend engine for reading glider DBD files
-directly without conversion to NetCDF, matching or exceeding the performance
-of dbd2netCDF.
+directly without conversion to NetCDF, using a C++ parser via pybind11.
 """
 
+from ._dbd_cpp import read_dbd_file, read_dbd_files
 from .backend import (
     DBDBackendEntrypoint,
     open_dbd_dataset,
     open_multi_dbd_dataset,
 )
-from .reader import DBDReader
 
-__version__ = "0.1"
+from importlib.metadata import version
+
+__version__ = version("xarray-dbd")
 __all__ = [
     "DBDBackendEntrypoint",
-    "DBDReader",
+    "read_dbd_file",
+    "read_dbd_files",
     "open_dbd_dataset",
     "open_multi_dbd_dataset",
 ]

@@ -10,11 +10,7 @@ from pathlib import Path
 
 import xarray as xr
 
-# Add local module to path
-sys.path.insert(0, str(Path(__file__).parent))
 import xarray_dbd as xdbd
-
-__version__ = "0.1.0"
 
 
 def read_sensor_list(filename: Path) -> list[str]:
@@ -89,7 +85,9 @@ def main():
     parser.add_argument(
         "-r", "--repair", action="store_true", help="attempt to repair bad data records"
     )
-    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {__version__}")
+    parser.add_argument(
+        "-V", "--version", action="version", version=f"%(prog)s {xdbd.__version__}"
+    )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="enable some diagnostic output"
     )
