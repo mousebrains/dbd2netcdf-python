@@ -19,6 +19,7 @@ from pathlib import Path
 
 import xarray_dbd as xdbd
 from xarray_dbd.cli import logger
+from xarray_dbd.cli.dbd2nc import _nc_encoding
 
 
 def processFiles(
@@ -65,11 +66,7 @@ def processFiles(
         return
 
     # Write to NetCDF with compression to match C++ dbd2netCDF output
-    encoding = {
-        var: {"zlib": True, "complevel": 5, "chunksizes": (min(5000, len(ds.i)),)}
-        for var in ds.data_vars
-    }
-    ds.to_netcdf(ofn, encoding=encoding)
+    ds.to_netcdf(ofn, encoding=_nc_encoding(ds, 5))
     logging.info(
         "Wrote %s with %d records and %d variables in %.2f seconds",
         ofn,
@@ -189,13 +186,8 @@ def discover_files(paths: list[str]) -> dict[str, list[str]]:
     return files
 
 
-def addArgs(subparsers) -> None:
-    """Register the 'mkone' subcommand."""
-    parser = subparsers.add_parser(
-        "mkone",
-        help="Batch process directories of DBD files",
-        description="Discover and convert directories of Slocum glider DBD files to NetCDF",
-    )
+def _add_common_args(parser) -> None:
+    """Add arguments shared between the subcommand and standalone entry point."""
     parser.add_argument(
         "path",
         type=str,
@@ -218,6 +210,16 @@ def addArgs(subparsers) -> None:
     grp.add_argument("--outputPrefix", type=str, required=True, help="Output prefix")
 
     logger.addArgs(parser)
+
+
+def addArgs(subparsers) -> None:
+    """Register the 'mkone' subcommand."""
+    parser = subparsers.add_parser(
+        "mkone",
+        help="Batch process directories of DBD files",
+        description="Discover and convert directories of Slocum glider DBD files to NetCDF",
+    )
+    _add_common_args(parser)
     parser.set_defaults(func=run)
 
 
@@ -261,28 +263,7 @@ def run(args) -> int:
 def main():
     """Standalone entry point for mkone command."""
     parser = ArgumentParser()
-    parser.add_argument(
-        "path",
-        type=str,
-        nargs="+",
-        help="Dinkum binary files or directories to convert",
-    )
-    grp = parser.add_argument_group(description="Processing options")
-    grp.add_argument("--cache", type=str, default="cache", help="Directory for sensor cache files")
-    grp.add_argument("--repair", action="store_true", help="Should corrupted files be 'repaired'")
-    grp.add_argument(
-        "--keepFirst",
-        action="store_true",
-        help="Should the first record not be discarded on all the files?",
-    )
-    g = grp.add_mutually_exclusive_group()
-    g.add_argument("--exclude", type=str, action="append", help="Mission(s) to exclude")
-    g.add_argument("--include", type=str, action="append", help="Mission(s) to include")
-
-    grp = parser.add_argument_group(description="Output related arguments")
-    grp.add_argument("--outputPrefix", type=str, required=True, help="Output prefix")
-
-    logger.addArgs(parser)
+    _add_common_args(parser)
     args = parser.parse_args()
     sys.exit(run(args))
 

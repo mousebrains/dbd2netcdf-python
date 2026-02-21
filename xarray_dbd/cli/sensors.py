@@ -14,13 +14,8 @@ import xarray_dbd as xdbd
 from xarray_dbd.cli import logger
 
 
-def addArgs(subparsers) -> None:
-    """Register the 'sensors' subcommand."""
-    parser = subparsers.add_parser(
-        "sensors",
-        help="List sensors from DBD file headers",
-        description="Scan DBD file headers and output the unified sensor list (no data read)",
-    )
+def _add_common_args(parser) -> None:
+    """Add arguments shared between the subcommand and standalone entry point."""
     parser.add_argument("files", nargs="+", type=Path, help="DBD files to scan")
     parser.add_argument(
         "-C",
@@ -54,6 +49,16 @@ def addArgs(subparsers) -> None:
         help="Where to store the output (default: stdout)",
     )
     logger.addArgs(parser)
+
+
+def addArgs(subparsers) -> None:
+    """Register the 'sensors' subcommand."""
+    parser = subparsers.add_parser(
+        "sensors",
+        help="List sensors from DBD file headers",
+        description="Scan DBD file headers and output the unified sensor list (no data read)",
+    )
+    _add_common_args(parser)
     parser.set_defaults(func=run)
 
 
@@ -104,39 +109,7 @@ def main():
     parser = ArgumentParser(
         description="Scan DBD file headers and output the unified sensor list",
     )
-    parser.add_argument("files", nargs="+", type=Path, help="DBD files to scan")
-    parser.add_argument(
-        "-C",
-        "--cache",
-        type=str,
-        default="",
-        metavar="directory",
-        help="Directory to cache sensor list in",
-    )
-    parser.add_argument(
-        "-m",
-        "--skipMission",
-        action="append",
-        default=[],
-        metavar="mission",
-        help="Mission to skip (can be repeated)",
-    )
-    parser.add_argument(
-        "-M",
-        "--keepMission",
-        action="append",
-        default=[],
-        metavar="mission",
-        help="Mission to keep (can be repeated)",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        metavar="filename",
-        help="Where to store the output (default: stdout)",
-    )
-    logger.addArgs(parser)
+    _add_common_args(parser)
     args = parser.parse_args()
     sys.exit(run(args))
 

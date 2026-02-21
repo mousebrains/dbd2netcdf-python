@@ -10,6 +10,7 @@ from pathlib import Path
 
 import xarray_dbd as xdbd
 from xarray_dbd.cli import logger
+from xarray_dbd.cli.sensors import _add_common_args
 
 
 def addArgs(subparsers) -> None:
@@ -19,45 +20,13 @@ def addArgs(subparsers) -> None:
         help="List cache CRCs and file counts from DBD file headers",
         description="Scan DBD file headers and output sensor_list_crc values with file counts",
     )
-    parser.add_argument("files", nargs="+", type=Path, help="DBD files to scan")
-    parser.add_argument(
-        "-C",
-        "--cache",
-        type=str,
-        default="",
-        metavar="directory",
-        help="Cache directory (required for --missing)",
-    )
+    _add_common_args(parser)
     parser.add_argument(
         "--missing",
         action="store_true",
         default=False,
         help="Only show CRCs whose cache file is absent from the cache directory",
     )
-    parser.add_argument(
-        "-m",
-        "--skipMission",
-        action="append",
-        default=[],
-        metavar="mission",
-        help="Mission to skip (can be repeated)",
-    )
-    parser.add_argument(
-        "-M",
-        "--keepMission",
-        action="append",
-        default=[],
-        metavar="mission",
-        help="Mission to keep (can be repeated)",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        metavar="filename",
-        help="Where to store the output (default: stdout)",
-    )
-    logger.addArgs(parser)
     parser.set_defaults(func=run)
 
 

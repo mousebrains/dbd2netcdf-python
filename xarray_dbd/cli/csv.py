@@ -17,13 +17,8 @@ from xarray_dbd.cli import logger
 from xarray_dbd.cli.dbd2nc import read_sensor_list
 
 
-def addArgs(subparsers) -> None:
-    """Register the '2csv' subcommand."""
-    parser = subparsers.add_parser(
-        "2csv",
-        help="Convert DBD files to CSV",
-        description="Read Slocum glider DBD files and output CSV",
-    )
+def _add_common_args(parser) -> None:
+    """Add arguments shared between the subcommand and standalone entry point."""
     parser.add_argument("files", nargs="+", type=Path, help="DBD files to process")
     parser.add_argument(
         "-c",
@@ -80,6 +75,16 @@ def addArgs(subparsers) -> None:
         help="Attempt to repair bad data records",
     )
     logger.addArgs(parser)
+
+
+def addArgs(subparsers) -> None:
+    """Register the '2csv' subcommand."""
+    parser = subparsers.add_parser(
+        "2csv",
+        help="Convert DBD files to CSV",
+        description="Read Slocum glider DBD files and output CSV",
+    )
+    _add_common_args(parser)
     parser.set_defaults(func=run)
 
 
@@ -161,62 +166,7 @@ def main():
     parser = ArgumentParser(
         description="Convert Slocum glider DBD files to CSV",
     )
-    parser.add_argument("files", nargs="+", type=Path, help="DBD files to process")
-    parser.add_argument(
-        "-c",
-        "--sensors",
-        type=Path,
-        metavar="filename",
-        help="File containing sensors to select on (criteria)",
-    )
-    parser.add_argument(
-        "-C",
-        "--cache",
-        type=Path,
-        metavar="directory",
-        help="Directory to cache sensor list in",
-    )
-    parser.add_argument(
-        "-k",
-        "--sensorOutput",
-        type=Path,
-        metavar="filename",
-        help="File containing sensors to output",
-    )
-    parser.add_argument(
-        "-m",
-        "--skipMission",
-        action="append",
-        metavar="mission",
-        help="Mission to skip (can be repeated)",
-    )
-    parser.add_argument(
-        "-M",
-        "--keepMission",
-        action="append",
-        metavar="mission",
-        help="Mission to keep (can be repeated)",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        metavar="filename",
-        help="Where to store the CSV (default: stdout)",
-    )
-    parser.add_argument(
-        "-s",
-        "--skipFirst",
-        action="store_true",
-        help="Skip first record in each file except the first",
-    )
-    parser.add_argument(
-        "-r",
-        "--repair",
-        action="store_true",
-        help="Attempt to repair bad data records",
-    )
-    logger.addArgs(parser)
+    _add_common_args(parser)
     args = parser.parse_args()
     sys.exit(run(args))
 

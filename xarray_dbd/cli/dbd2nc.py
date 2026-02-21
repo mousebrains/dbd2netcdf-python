@@ -28,13 +28,8 @@ def read_sensor_list(filename: Path) -> list[str]:
     return sensors
 
 
-def addArgs(subparsers) -> None:
-    """Register the '2nc' subcommand."""
-    parser = subparsers.add_parser(
-        "2nc",
-        help="Convert DBD files to NetCDF",
-        description="Convert Slocum glider DBD files to NetCDF format",
-    )
+def _add_common_args(parser) -> None:
+    """Add arguments shared between the subcommand and standalone entry point."""
     parser.add_argument("files", nargs="+", type=Path, help="DBD files to process")
     parser.add_argument("-a", "--append", action="store_true", help="Append to the NetCDF file")
     parser.add_argument(
@@ -92,8 +87,35 @@ def addArgs(subparsers) -> None:
         action="store_true",
         help="Attempt to repair bad data records",
     )
+    parser.add_argument(
+        "--compression",
+        type=int,
+        default=5,
+        metavar="level",
+        help="NetCDF compression level 1-9 (default: 5, <=0 to disable)",
+    )
     logger.addArgs(parser)
+
+
+def addArgs(subparsers) -> None:
+    """Register the '2nc' subcommand."""
+    parser = subparsers.add_parser(
+        "2nc",
+        help="Convert DBD files to NetCDF",
+        description="Convert Slocum glider DBD files to NetCDF format",
+    )
+    _add_common_args(parser)
     parser.set_defaults(func=run)
+
+
+def _nc_encoding(ds, complevel: int) -> dict | None:
+    """Build NetCDF encoding dict with zlib compression, or None if disabled."""
+    if complevel <= 0:
+        return None
+    return {
+        var: {"zlib": True, "complevel": complevel, "chunksizes": (min(5000, len(ds.i)),)}
+        for var in ds.data_vars
+    }
 
 
 def run(args) -> int:
@@ -158,7 +180,7 @@ def run(args) -> int:
                     import os
 
                     os.close(tmp_fd)
-                    ds_combined.to_netcdf(tmp_path)
+                    ds_combined.to_netcdf(tmp_path, encoding=_nc_encoding(ds_combined, args.compression))
                     Path(tmp_path).replace(args.output)
                 except Exception:
                     Path(tmp_path).unlink(missing_ok=True)
@@ -168,7 +190,7 @@ def run(args) -> int:
                 return 1
         else:
             logging.info("Writing to %s", args.output)
-            ds.to_netcdf(args.output)
+            ds.to_netcdf(args.output, encoding=_nc_encoding(ds, args.compression))
 
         logging.info("Successfully wrote %s", args.output)
         return 0
@@ -183,73 +205,15 @@ def main():
     """Standalone entry point for dbd2nc."""
     parser = ArgumentParser(
         description="Convert Slocum glider DBD files to NetCDF format",
-        formatter_class=ArgumentParser().formatter_class,
         epilog="Report bugs to pat@mousebrains.com",
     )
-    parser.add_argument("files", nargs="+", type=Path, help="DBD files to process")
-    parser.add_argument("-a", "--append", action="store_true", help="Append to the NetCDF file")
-    parser.add_argument(
-        "-c",
-        "--sensors",
-        type=Path,
-        metavar="filename",
-        help="File containing sensors to select on (criteria)",
-    )
-    parser.add_argument(
-        "-C",
-        "--cache",
-        type=Path,
-        metavar="directory",
-        help="Directory to cache sensor list in",
-    )
-    parser.add_argument(
-        "-k",
-        "--sensorOutput",
-        type=Path,
-        metavar="filename",
-        help="File containing sensors to output",
-    )
-    parser.add_argument(
-        "-m",
-        "--skipMission",
-        action="append",
-        metavar="mission",
-        help="Mission to skip (can be repeated)",
-    )
-    parser.add_argument(
-        "-M",
-        "--keepMission",
-        action="append",
-        metavar="mission",
-        help="Mission to keep (can be repeated)",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        metavar="filename",
-        required=True,
-        help="Where to store the data",
-    )
-    parser.add_argument(
-        "-s",
-        "--skipFirst",
-        action="store_true",
-        help="Skip first record in each file except the first",
-    )
-    parser.add_argument(
-        "-r",
-        "--repair",
-        action="store_true",
-        help="Attempt to repair bad data records",
-    )
+    _add_common_args(parser)
     parser.add_argument(
         "-V",
         "--version",
         action="version",
         version=f"%(prog)s {xdbd.__version__}",
     )
-    logger.addArgs(parser)
     args = parser.parse_args()
     sys.exit(run(args))
 
