@@ -42,10 +42,19 @@ class DBDDataStore:
         except RuntimeError as e:
             raise OSError(f"Failed to read {self.filename}: {e}") from e
 
-        required_keys = {"columns", "sensor_names", "sensor_units", "sensor_sizes", "n_records", "header"}
+        required_keys = {
+            "columns",
+            "sensor_names",
+            "sensor_units",
+            "sensor_sizes",
+            "n_records",
+            "header",
+        }
         missing = required_keys - result.keys()
         if missing:
-            raise OSError(f"Incomplete result from C++ backend for {self.filename}: missing {missing}")
+            raise OSError(
+                f"Incomplete result from C++ backend for {self.filename}: missing {missing}"
+            )
 
         self._columns = list(result["columns"])
         self._sensor_names = list(result["sensor_names"])
@@ -127,8 +136,20 @@ class DBDBackendEntrypoint(BackendEntrypoint):
         try:
             filename = Path(filename_or_obj)
             ext = filename.suffix.lower()
-            return ext in [".dbd", ".ebd", ".sbd", ".tbd", ".mbd", ".nbd",
-                           ".dcd", ".ecd", ".scd", ".tcd", ".mcd", ".ncd"]
+            return ext in [
+                ".dbd",
+                ".ebd",
+                ".sbd",
+                ".tbd",
+                ".mbd",
+                ".nbd",
+                ".dcd",
+                ".ecd",
+                ".scd",
+                ".tcd",
+                ".mcd",
+                ".ncd",
+            ]
         except (TypeError, AttributeError):
             return False
 

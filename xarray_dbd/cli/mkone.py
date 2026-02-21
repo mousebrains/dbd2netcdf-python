@@ -71,7 +71,10 @@ def processFiles(
     ds.to_netcdf(ofn, encoding=encoding)
     logging.info(
         "Wrote %s with %d records and %d variables in %.2f seconds",
-        ofn, len(ds.i), len(ds.data_vars), time.time() - stime,
+        ofn,
+        len(ds.i),
+        len(ds.data_vars),
+        time.time() - stime,
     )
 
 
@@ -84,7 +87,9 @@ def extractSensors(filenames: list, args: ArgumentParser) -> list:
     for filename in filenames:
         try:
             result = xdbd.read_dbd_file(
-                str(filename), cache_dir=cache_dir, skip_first_record=False,
+                str(filename),
+                cache_dir=cache_dir,
+                skip_first_record=False,
             )
             all_sensors.update(result["sensor_names"])
         except Exception as e:
@@ -185,7 +190,9 @@ def main():
     """Main entry point for mkone command"""
     parser = ArgumentParser()
     parser.add_argument(
-        "path", type=str, nargs="+",
+        "path",
+        type=str,
+        nargs="+",
         help="Dinkum binary files or directories to convert",
     )
 

@@ -85,9 +85,7 @@ def main():
     parser.add_argument(
         "-r", "--repair", action="store_true", help="attempt to repair bad data records"
     )
-    parser.add_argument(
-        "-V", "--version", action="version", version=f"%(prog)s {xdbd.__version__}"
-    )
+    parser.add_argument("-V", "--version", action="version", version=f"%(prog)s {xdbd.__version__}")
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="enable some diagnostic output"
     )

@@ -49,6 +49,11 @@ def test_dbd2nc_version():
 )
 def test_dbd2nc_produces_output():
     """dbd2nc with sample files produces a NetCDF file."""
+    try:
+        import scipy  # noqa: F401
+    except ImportError:
+        pytest.skip("No NetCDF backend available (need scipy, netCDF4, or h5netcdf)")
+
     dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
     if not dcd_files:
         pytest.skip("No .dcd files available")
