@@ -102,7 +102,7 @@ End              →  'X' tag
 
 5. **`skip_first_record` semantics**: Files are sorted, first contributing file keeps all records, subsequent files drop their first record.
 
-6. **Fill values**: NaN for float32/float64, 0 for int8/int16. The C++ `Data.C` uses NaN (as double) for all types; our native-dtype approach uses 0 for integer types since NaN is not representable.
+6. **Fill values**: NaN for float32/float64, -127 for int8, -32768 for int16 — matching the C++ dbd2netCDF standalone.
 
 ## Testing Against C++ Reference
 

@@ -252,8 +252,8 @@ MultiFileResult parse_multiple_files(
     std::vector<TypedColumn> unionColumns(nOut);
     for (size_t i = 0; i < nOut; ++i) {
         switch (unionInfo[i].size) {
-            case 1: unionColumns[i] = std::vector<int8_t>(totalRecords, 0); break;
-            case 2: unionColumns[i] = std::vector<int16_t>(totalRecords, 0); break;
+            case 1: unionColumns[i] = std::vector<int8_t>(totalRecords, FILL_INT8); break;
+            case 2: unionColumns[i] = std::vector<int16_t>(totalRecords, FILL_INT16); break;
             case 4: unionColumns[i] = std::vector<float>(totalRecords, NAN); break;
             case 8: unionColumns[i] = std::vector<double>(totalRecords, NAN); break;
             default: unionColumns[i] = std::vector<double>(totalRecords, NAN); break;

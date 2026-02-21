@@ -51,24 +51,23 @@ ColumnDataResult read_columns(std::istream& is,
     const size_t initCapacity = std::max<size_t>(256, 2 * nBytes / (nHeader + 1) + 1);
 
     // Create typed columns based on sensor sizes
-    // Fill values match C++ dbd2netCDF: NaN for float/double, 0 for int types
     std::vector<TypedColumn> columns(nOut);
     for (size_t i = 0; i < nOut; ++i) {
         switch (sensorInfo[i].size) {
-            case 1: columns[i] = std::vector<int8_t>(initCapacity, 0); break;
-            case 2: columns[i] = std::vector<int16_t>(initCapacity, 0); break;
+            case 1: columns[i] = std::vector<int8_t>(initCapacity, FILL_INT8); break;
+            case 2: columns[i] = std::vector<int16_t>(initCapacity, FILL_INT16); break;
             case 4: columns[i] = std::vector<float>(initCapacity, NAN); break;
             case 8: columns[i] = std::vector<double>(initCapacity, NAN); break;
             default: columns[i] = std::vector<double>(initCapacity, NAN); break;
         }
     }
 
-    // Previous values per output column - initialized to NaN/0 matching fill values
+    // Previous values per output column — initialized to fill values
     std::vector<TypedColumn> prevValues(nOut);
     for (size_t i = 0; i < nOut; ++i) {
         switch (sensorInfo[i].size) {
-            case 1: prevValues[i] = std::vector<int8_t>(1, 0); break;
-            case 2: prevValues[i] = std::vector<int16_t>(1, 0); break;
+            case 1: prevValues[i] = std::vector<int8_t>(1, FILL_INT8); break;
+            case 2: prevValues[i] = std::vector<int16_t>(1, FILL_INT16); break;
             case 4: prevValues[i] = std::vector<float>(1, NAN); break;
             case 8: prevValues[i] = std::vector<double>(1, NAN); break;
             default: prevValues[i] = std::vector<double>(1, NAN); break;
@@ -130,10 +129,12 @@ ColumnDataResult read_columns(std::istream& is,
                         using PT = typename std::decay_t<decltype(prev_vec)>::value_type;
                         if constexpr (std::is_same_v<T, PT>) {
                             if (nRows >= col_vec.size()) {
-                                if constexpr (std::is_floating_point_v<T>)
-                                    col_vec.resize(col_vec.size() * 2, NAN);
+                                if constexpr (std::is_same_v<T, int8_t>)
+                                    col_vec.resize(col_vec.size() * 2, FILL_INT8);
+                                else if constexpr (std::is_same_v<T, int16_t>)
+                                    col_vec.resize(col_vec.size() * 2, FILL_INT16);
                                 else
-                                    col_vec.resize(col_vec.size() * 2, 0);
+                                    col_vec.resize(col_vec.size() * 2, NAN);
                             }
                             col_vec[nRows] = prev_vec[0];
                         }
@@ -150,7 +151,7 @@ ColumnDataResult read_columns(std::istream& is,
                         int8_t val = kb.read8(is);
                         if (oi >= 0) {
                             auto& vec = std::get<std::vector<int8_t>>(columns[oi]);
-                            if (nRows >= vec.size()) vec.resize(vec.size() * 2, 0);
+                            if (nRows >= vec.size()) vec.resize(vec.size() * 2, FILL_INT8);
                             vec[nRows] = val;
                             std::get<std::vector<int8_t>>(prevValues[oi])[0] = val;
                         }
@@ -160,7 +161,7 @@ ColumnDataResult read_columns(std::istream& is,
                         int16_t val = kb.read16(is);
                         if (oi >= 0) {
                             auto& vec = std::get<std::vector<int16_t>>(columns[oi]);
-                            if (nRows >= vec.size()) vec.resize(vec.size() * 2, 0);
+                            if (nRows >= vec.size()) vec.resize(vec.size() * 2, FILL_INT16);
                             vec[nRows] = val;
                             std::get<std::vector<int16_t>>(prevValues[oi])[0] = val;
                         }
@@ -202,7 +203,10 @@ ColumnDataResult read_columns(std::istream& is,
         }
     }
     } catch (const std::exception&) {
-        // Retain partial results on I/O error (matching C++ dbd2netCDF behavior)
+        // Retain partial results on I/O error.
+        // Include the partially-read record (matching C++ dbd2netCDF behavior
+        // where the pre-allocated row at nRows has partial sensor values written).
+        ++nRows;
     }
 
     // Trim columns to actual size

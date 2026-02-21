@@ -6,11 +6,16 @@
 // per sensor column with native dtypes (int8, int16, float, double).
 // This allows zero-copy transfer to numpy arrays via pybind11.
 
+#include <climits>
 #include <cstdint>
 #include <iosfwd>
 #include <string>
 #include <variant>
 #include <vector>
+
+// Fill values matching C++ dbd2netCDF standalone (NaN for floats)
+static constexpr int8_t  FILL_INT8  = INT8_MIN + 1;  // -127
+static constexpr int16_t FILL_INT16 = INT16_MIN;      // -32768
 
 class KnownBytes;
 class Sensors;
