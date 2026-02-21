@@ -3,8 +3,16 @@ project(xarray_dbd_cpp LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(pybind11 CONFIG REQUIRED)
+# Compiler warning flags
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+find_package(pybind11 2.11...<2.14 CONFIG REQUIRED)
 
 pybind11_add_module(_dbd_cpp
     csrc/dbd_python.cpp
@@ -22,7 +30,11 @@ pybind11_add_module(_dbd_cpp
 target_include_directories(_dbd_cpp PRIVATE csrc)
 
 # Suppress warnings for vendored lz4.c
-set_source_files_properties(csrc/lz4.c PROPERTIES COMPILE_FLAGS -w)
+if(MSVC)
+    set_source_files_properties(csrc/lz4.c PROPERTIES COMPILE_FLAGS /w)
+else()
+    set_source_files_properties(csrc/lz4.c PROPERTIES COMPILE_FLAGS -w)
+endif()
 
 # Platform-specific: Windows needs winsock2 for ntohs/ntohl
 if(WIN32)

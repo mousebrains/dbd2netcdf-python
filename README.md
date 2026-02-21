@@ -1,11 +1,14 @@
 # xarray-dbd
 
-An efficient xarray backend for reading Dinkum Binary Data (DBD) files from ocean gliders.
+An efficient xarray backend for reading Dinkum Binary Data (DBD) files from
+[Slocum ocean gliders](https://www.teledynemarine.com/brands/webb-research/slocum-glider).
+Slocum gliders are autonomous underwater vehicles widely used in oceanography to collect
+temperature, salinity, and other water-column measurements along sawtooth profiles.
 
 This package provides native xarray support for DBD files, allowing you to read glider data
-directly into xarray Datasets without intermediate NetCDF conversion. The implementation is
-designed to match or exceed the performance of the original
-[dbd2netCDF](https://github.com/mousebrains/dbd2netcdf) C++ tool.
+directly into xarray Datasets without intermediate NetCDF conversion. The C++ binary parser
+(via [pybind11](https://pybind11.readthedocs.io/)) matches the performance of the original
+[dbd2netCDF](https://github.com/mousebrains/dbd2netcdf) tool.
 
 ## Features
 
@@ -239,6 +242,25 @@ df = ds.to_dataframe()
 print(df.describe())
 ```
 
+## Known Limitations
+
+- **Python 3.13+ required** — uses modern type-hint syntax and C API features.
+- **Free-threaded Python (3.13t)** — pybind11 extensions may crash under the
+  no-GIL build; this is an upstream pybind11 limitation.
+- **Timestamps are raw floats** — `m_present_time` values are Unix epoch
+  seconds (float64). Convert with `pandas.to_datetime(ds['m_present_time'], unit='s')`.
+- **No lazy loading** — all sensor data is read into memory on `open_dataset()`.
+  For very large deployments, use `to_keep` to select only needed sensors.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `ImportError: _dbd_cpp` | Reinstall with `pip install -e .` — the C++ extension needs compiling. |
+| `RuntimeError: ... cache ...` | Pass `cache_dir=` pointing to the directory containing `.cac`/`.ccc` files. |
+| Empty dataset (0 records) | Check that the file isn't a header-only stub (0 data records). |
+| `OSError: Failed to read` | The file may be truncpted or use an unsupported format version. Try `repair=True`. |
+
 ## Development
 
 ### Running tests
@@ -254,6 +276,8 @@ pytest
 ruff format xarray_dbd/
 ruff check xarray_dbd/
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup instructions.
 
 ## License
 

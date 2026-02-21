@@ -1,5 +1,5 @@
 [build-system]
-requires = ["scikit-build-core>=0.5", "pybind11>=2.11"]
+requires = ["scikit-build-core>=0.5", "pybind11>=2.11,<2.14"]
 build-backend = "scikit_build_core.build"
 
 [project]
@@ -28,12 +28,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
+test = [
     "pytest>=7.0",
     "pytest-cov",
+    "scipy>=1.11",
+]
+lint = [
     "ruff>=0.8.0",
     "mypy>=1.13",
-    "scipy>=1.11",
+]
+dev = [
+    "xarray-dbd[test,lint]",
 ]
 
 [project.scripts]

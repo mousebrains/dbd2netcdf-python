@@ -2,6 +2,7 @@
 Xarray backend engine for DBD files using C++ parser
 """
 
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -11,17 +12,42 @@ from xarray.backends import BackendEntrypoint
 
 from ._dbd_cpp import read_dbd_file, read_dbd_files
 
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "DBDDataStore",
+    "DBDBackendEntrypoint",
+    "open_dbd_dataset",
+    "open_multi_dbd_dataset",
+]
+
 
 class DBDDataStore:
-    """Data store for DBD files using C++ backend"""
+    """Data store for reading a single DBD file using the C++ backend.
+
+    Parameters
+    ----------
+    filename : str or Path
+        Path to the DBD file.
+    skip_first_record : bool
+        If True, skip the first data record (for deduplication in multi-file reads).
+    repair : bool
+        If True, attempt to recover data from corrupted records.
+    to_keep : list of str or None
+        Sensor names to keep. If None or empty, all sensors are loaded.
+    criteria : list of str or None
+        Sensor names used for record selection criteria.
+    cache_dir : str, Path, or None
+        Directory for sensor cache files. Defaults to ``<file_dir>/cache``.
+    """
 
     def __init__(
         self,
         filename: str | Path,
         skip_first_record: bool = True,
         repair: bool = False,
-        to_keep: list | None = None,
-        criteria: list | None = None,
+        to_keep: list[str] | None = None,
+        criteria: list[str] | None = None,
         cache_dir: str | Path | None = None,
     ):
         self.filename = Path(filename)
@@ -95,7 +121,12 @@ class DBDDataStore:
 
 
 class DBDBackendEntrypoint(BackendEntrypoint):
-    """Xarray backend entrypoint for DBD files"""
+    """Xarray backend entrypoint for DBD files.
+
+    Registers as the ``"dbd"`` engine for :func:`xarray.open_dataset`.
+    Supports all Slocum glider binary formats (``.dbd``, ``.ebd``, ``.sbd``,
+    ``.tbd``, ``.mbd``, ``.nbd``) and their compressed variants (``.dcd``, etc.).
+    """
 
     description = "Backend for reading Dinkum Binary Data (DBD) files"
     url = "https://github.com/mousebrains/dbd2netcdf"
@@ -107,11 +138,33 @@ class DBDBackendEntrypoint(BackendEntrypoint):
         drop_variables: tuple[str] | None = None,
         skip_first_record: bool = True,
         repair: bool = False,
-        to_keep: list | None = None,
-        criteria: list | None = None,
+        to_keep: list[str] | None = None,
+        criteria: list[str] | None = None,
         cache_dir: str | Path | None = None,
     ) -> xr.Dataset:
-        """Open a DBD file as an xarray Dataset"""
+        """Open a DBD file as an xarray Dataset.
+
+        Parameters
+        ----------
+        filename_or_obj : str or Path
+            Path to the DBD file.
+        drop_variables : tuple of str, optional
+            Variable names to exclude from the returned Dataset.
+        skip_first_record : bool
+            Skip the first data record (default True).
+        repair : bool
+            Attempt to repair corrupted records (default False).
+        to_keep : list of str, optional
+            Sensor names to keep. If None, all sensors are loaded.
+        criteria : list of str, optional
+            Sensor names for record selection criteria.
+        cache_dir : str, Path, or None
+            Directory for sensor cache files.
+
+        Returns
+        -------
+        xr.Dataset
+        """
         filename = Path(filename_or_obj)
 
         store = DBDDataStore(
@@ -158,12 +211,39 @@ def open_dbd_dataset(
     filename: str | Path,
     skip_first_record: bool = True,
     repair: bool = False,
-    to_keep: list | None = None,
-    criteria: list | None = None,
-    drop_variables: list | None = None,
+    to_keep: list[str] | None = None,
+    criteria: list[str] | None = None,
+    drop_variables: list[str] | None = None,
     cache_dir: str | Path | None = None,
 ) -> xr.Dataset:
-    """Open a DBD file as an xarray Dataset"""
+    """Open a single DBD file as an xarray Dataset.
+
+    Parameters
+    ----------
+    filename : str or Path
+        Path to the DBD file.
+    skip_first_record : bool
+        Skip the first data record (default True).
+    repair : bool
+        Attempt to repair corrupted records (default False).
+    to_keep : list of str, optional
+        Sensor names to keep. If None, all sensors are loaded.
+    criteria : list of str, optional
+        Sensor names for record selection criteria.
+    drop_variables : list of str, optional
+        Variable names to exclude from the returned Dataset.
+    cache_dir : str, Path, or None
+        Directory for sensor cache files. Defaults to ``<file_dir>/cache``.
+
+    Returns
+    -------
+    xr.Dataset
+
+    Examples
+    --------
+    >>> ds = open_dbd_dataset("test.sbd")
+    >>> ds = open_dbd_dataset("test.sbd", to_keep=["m_depth", "m_lat"])
+    """
     return xr.open_dataset(
         filename,
         engine=DBDBackendEntrypoint,
@@ -180,16 +260,45 @@ def open_multi_dbd_dataset(
     filenames: Iterable[str | Path],
     skip_first_record: bool = True,
     repair: bool = False,
-    to_keep: list | None = None,
-    criteria: list | None = None,
-    skip_missions: list | None = None,
-    keep_missions: list | None = None,
+    to_keep: list[str] | None = None,
+    criteria: list[str] | None = None,
+    skip_missions: list[str] | None = None,
+    keep_missions: list[str] | None = None,
     cache_dir: str | Path | None = None,
 ) -> xr.Dataset:
-    """Open multiple DBD files as a single xarray Dataset
+    """Open multiple DBD files as a single concatenated xarray Dataset.
 
-    Uses C++ backend for sequential two-pass approach with SensorsMap
-    for exact C++ parity.
+    Uses the C++ backend's two-pass approach with SensorsMap to merge sensor
+    definitions across files, matching dbd2netCDF behavior exactly.
+
+    Parameters
+    ----------
+    filenames : iterable of str or Path
+        Paths to DBD files. Files are sorted internally.
+    skip_first_record : bool
+        Skip first record in each file except the first (default True).
+    repair : bool
+        Attempt to repair corrupted records (default False).
+    to_keep : list of str, optional
+        Sensor names to keep. If None, all sensors are loaded.
+    criteria : list of str, optional
+        Sensor names for record selection criteria.
+    skip_missions : list of str, optional
+        Mission names to exclude.
+    keep_missions : list of str, optional
+        Mission names to include (excludes all others).
+    cache_dir : str, Path, or None
+        Directory for sensor cache files.
+
+    Returns
+    -------
+    xr.Dataset
+
+    Examples
+    --------
+    >>> files = sorted(Path(".").glob("*.sbd"))
+    >>> ds = open_multi_dbd_dataset(files)
+    >>> ds = open_multi_dbd_dataset(files, to_keep=["m_depth", "m_present_time"])
     """
     file_list = [str(Path(f)) for f in filenames]
 
@@ -217,6 +326,11 @@ def open_multi_dbd_dataset(
     sensor_units = list(result["sensor_units"])
     n_records = int(result["n_records"])
     n_files = int(result["n_files"])
+
+    if to_keep:
+        missing = set(to_keep) - set(sensor_names)
+        if missing:
+            logger.warning("Requested sensors not found in any file: %s", sorted(missing))
 
     if not columns:
         return xr.Dataset()
