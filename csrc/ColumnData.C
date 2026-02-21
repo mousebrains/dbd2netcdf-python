@@ -203,10 +203,8 @@ ColumnDataResult read_columns(std::istream& is,
         }
     }
     } catch (const std::exception&) {
-        // Retain partial results on I/O error.
-        // Include the partially-read record (matching C++ dbd2netCDF behavior
-        // where the pre-allocated row at nRows has partial sensor values written).
-        ++nRows;
+        // Retain fully-parsed records; discard the partially-read record.
+        // C++ dbd2netCDF resizes mData to nRows, discarding the partial row.
     }
 
     // Trim columns to actual size

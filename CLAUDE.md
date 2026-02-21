@@ -106,8 +106,8 @@ End              →  'X' tag
 
 ## Testing Against C++ Reference
 
-- Compare record counts on dimension `i` — should match exactly for non-corrupted datasets
-- Corrupted files: our per-file approach may recover fewer partial records than C++ standalone's single-pass approach
+- Compare record counts on dimension `i` — should match exactly, including corrupted files
+- Corrupted file recovery: discard the partially-read record on I/O error (do NOT increment nRows in catch)
 - C++ output includes `hdr_*` variables (10 extra vars) that Python doesn't produce — exclude from variable count comparison
 - Use `np.allclose(equal_nan=True)` for float comparison; for int types, mask out NaN in C++ before comparing
 - C++ reference output for the mariner dataset lives at `/Users/pat/tpw/mariner/tpw/`
