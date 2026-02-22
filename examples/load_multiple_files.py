@@ -1,35 +1,40 @@
 #!/usr/bin/env python3
 """
-Simple example: Load multiple DBD files matching a pattern
+Simple example: Load multiple DBD files
 
-This example shows how to load and concatenate multiple glider files.
+Shows several ways to load and concatenate glider files: all at once,
+with sensor filtering, and with mission filtering.
+
+Usage:
+    python load_multiple_files.py -C cache/ *.dbd
 """
 
+from argparse import ArgumentParser
 from pathlib import Path
 
 import xarray_dbd as xdbd
 
-# Method 1: Load all files in a directory matching a pattern
-data_dir = Path("path/to/data")
-dbd_files = sorted(data_dir.glob("*.dbd"))
+parser = ArgumentParser(description="Load multiple DBD files and print a summary")
+parser.add_argument("files", nargs="+", type=Path, help="DBD files to load")
+parser.add_argument(
+    "-C",
+    "--cache",
+    type=Path,
+    metavar="directory",
+    help="Sensor cache directory (default: <file_dir>/cache)",
+)
+args = parser.parse_args()
 
-print(f"Found {len(dbd_files)} files")
+cache_dir = args.cache
 
-# Load all files and concatenate them
-ds = xdbd.open_multi_dbd_dataset(dbd_files)
+# Method 1: Load all files and concatenate them
+print(f"Loading {len(args.files)} files ...")
+ds = xdbd.open_multi_dbd_dataset(args.files, cache_dir=cache_dir)
 
-print(f"\nLoaded {len(ds.i)} total records from {len(dbd_files)} files")
-print(f"Variables: {list(ds.data_vars)}")
+print(f"  {len(ds.i)} total records, {len(ds.data_vars)} variables")
+print(f"  Variables: {list(ds.data_vars)[:10]}{'...' if len(ds.data_vars) > 10 else ''}")
 
-# Method 2: Load specific file types
-# Load only science data files (.ebd)
-ebd_files = sorted(data_dir.glob("*.ebd"))
-if ebd_files:
-    ds_science = xdbd.open_multi_dbd_dataset(ebd_files)
-    print(f"\nScience data: {len(ds_science.i)} records")
-
-# Method 3: Load files with filtering
-# Only keep certain sensors
+# Method 2: Load files with sensor filtering — only keep certain sensors
 sensors_to_keep = [
     "m_present_time",
     "m_depth",
@@ -39,23 +44,22 @@ sensors_to_keep = [
 ]
 
 ds_filtered = xdbd.open_multi_dbd_dataset(
-    dbd_files,
+    args.files,
     to_keep=sensors_to_keep,
+    cache_dir=cache_dir,
 )
 
 print(f"\nFiltered dataset has {len(ds_filtered.data_vars)} variables")
 
-# Method 4: Skip certain missions
+# Method 3: Skip certain missions
 ds_no_test = xdbd.open_multi_dbd_dataset(
-    dbd_files,
+    args.files,
     skip_missions=["initial.mi", "status.mi"],
+    cache_dir=cache_dir,
 )
+
+print(f"After skipping test missions: {len(ds_no_test.i)} records")
 
 # Access the combined data
 if "m_depth" in ds:
     print(f"\nDepth range: {ds['m_depth'].min().values:.2f} to {ds['m_depth'].max().values:.2f} m")
-    print(f"Total records: {len(ds.i)}")
-
-# Save concatenated data
-ds.to_netcdf("combined_output.nc")
-print("\nSaved combined data to combined_output.nc")

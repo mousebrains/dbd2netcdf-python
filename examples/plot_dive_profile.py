@@ -10,15 +10,14 @@ depth), and temperature, then produces a scatter plot with:
     color  : water temperature in degrees C
 
 Usage:
-    python plot_dive_profile.py ~/tpw/mariner/onboard/raw/*.e?d
+    python plot_dive_profile.py ~/data/raw/*.e?d
 
 Requirements:
     pip install xarray-dbd matplotlib
 """
 
-import sys
+from argparse import ArgumentParser
 from datetime import datetime, timezone
-from glob import glob
 from pathlib import Path
 
 import matplotlib.dates as mdates
@@ -37,30 +36,34 @@ TEMP_VAR = "sci_water_temp"  # temperature in degrees C
 
 PRESSURE_TO_DEPTH = 10.0  # rough conversion: 1 bar ≈ 10 m seawater
 
+# ── Parse arguments ──────────────────────────────────────────────────────
+
+parser = ArgumentParser(
+    description="Plot a glider dive profile colored by water temperature",
+)
+parser.add_argument("files", nargs="+", type=Path, help="DBD/EBD files to read")
+parser.add_argument(
+    "-C",
+    "--cache",
+    type=Path,
+    metavar="directory",
+    help="Sensor cache directory (default: parent of first file)",
+)
+args = parser.parse_args()
+
+cache_dir = args.cache or args.files[0].parent
+
 # ── Load data ────────────────────────────────────────────────────────────
 
-# Collect file paths from the command line (supports shell globs)
-files = sys.argv[1:]
-if not files:
-    print(__doc__.strip())
-    sys.exit(1)
-
-# Expand any unexpanded globs (useful on Windows)
-expanded = []
-for pattern in files:
-    matches = sorted(glob(pattern))
-    expanded.extend(matches if matches else [pattern])
-files = expanded
-
-print(f"Reading {len(files)} files ...")
+print(f"Reading {len(args.files)} files ...")
 
 # Read all files into a single xarray Dataset.
 # Only load the three sensors we need — this is much faster and uses
 # less memory than loading everything.
 ds = xdbd.open_multi_dbd_dataset(
-    files,
+    args.files,
     to_keep=[TIME_VAR, PRESSURE_VAR, TEMP_VAR],
-    cache_dir=Path(files[0]).parent,  # sensor cache lives alongside data
+    cache_dir=cache_dir,
 )
 
 print(f"  {ds.sizes['i']:,} records, {len(ds.data_vars)} variables")

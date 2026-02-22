@@ -2,13 +2,31 @@
 """
 Simple example: Load a single DBD file
 
-This example shows how to load a single glider DBD file as an xarray Dataset.
+Shows how to load a single glider DBD file as an xarray Dataset, inspect
+its dimensions and variables, and convert to a pandas DataFrame.
+
+Usage:
+    python load_single_file.py -C cache/ file.dbd
 """
+
+from argparse import ArgumentParser
+from pathlib import Path
 
 import xarray_dbd as xdbd
 
+parser = ArgumentParser(description="Load a single DBD file and print a summary")
+parser.add_argument("file", type=Path, help="DBD file to load")
+parser.add_argument(
+    "-C",
+    "--cache",
+    type=Path,
+    metavar="directory",
+    help="Sensor cache directory (default: <file_dir>/cache)",
+)
+args = parser.parse_args()
+
 # Load a single DBD file
-ds = xdbd.open_dbd_dataset("path/to/your/file.dbd")
+ds = xdbd.open_dbd_dataset(args.file, cache_dir=args.cache)
 
 # Display basic information
 print("Dataset dimensions:", dict(ds.dims))
@@ -28,7 +46,3 @@ if "m_lat" in ds and "m_lon" in ds:
 # Convert to pandas DataFrame if needed
 df = ds.to_dataframe()
 print(f"\nDataFrame shape: {df.shape}")
-
-# Save to NetCDF
-ds.to_netcdf("output.nc")
-print("\nSaved to output.nc")
