@@ -31,12 +31,12 @@ def main():
     subparsers = parser.add_subparsers(dest="command")
     subparsers.required = True
 
-    dbd2nc.addArgs(subparsers)
-    csv.addArgs(subparsers)
-    sensors.addArgs(subparsers)
-    missions.addArgs(subparsers)
-    cache.addArgs(subparsers)
-    mkone.addArgs(subparsers)
+    dbd2nc.add_args(subparsers)
+    csv.add_args(subparsers)
+    sensors.add_args(subparsers)
+    missions.add_args(subparsers)
+    cache.add_args(subparsers)
+    mkone.add_args(subparsers)
 
     args = parser.parse_args()
     sys.exit(args.func(args))

@@ -6,6 +6,7 @@ Convert Slocum glider DBD files to NetCDF format.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import tempfile
 from argparse import ArgumentParser
@@ -50,21 +51,21 @@ def _add_common_args(parser) -> None:
     )
     parser.add_argument(
         "-k",
-        "--sensorOutput",
+        "--sensor-output",
         type=Path,
         metavar="filename",
         help="File containing sensors to output",
     )
     parser.add_argument(
         "-m",
-        "--skipMission",
+        "--skip-mission",
         action="append",
         metavar="mission",
         help="Mission to skip (can be repeated)",
     )
     parser.add_argument(
         "-M",
-        "--keepMission",
+        "--keep-mission",
         action="append",
         metavar="mission",
         help="Mission to keep (can be repeated)",
@@ -79,7 +80,7 @@ def _add_common_args(parser) -> None:
     )
     parser.add_argument(
         "-s",
-        "--skipFirst",
+        "--skip-first",
         action="store_true",
         help="Skip first record in each file except the first",
     )
@@ -96,10 +97,10 @@ def _add_common_args(parser) -> None:
         metavar="level",
         help="NetCDF compression level 1-9 (default: 5, <=0 to disable)",
     )
-    logger.addArgs(parser)
+    logger.add_args(parser)
 
 
-def addArgs(subparsers) -> None:
+def add_args(subparsers) -> None:
     """Register the '2nc' subcommand."""
     parser = subparsers.add_parser(
         "2nc",
@@ -122,7 +123,7 @@ def _nc_encoding(ds, complevel: int) -> dict | None:
 
 def run(args) -> int:
     """Execute the 2nc / dbd2nc conversion."""
-    logger.mkLogger(args)
+    logger.mk_logger(args)
 
     for f in args.files:
         if not f.exists():
@@ -138,12 +139,12 @@ def run(args) -> int:
         logging.info("Loaded %d criteria sensors from %s", len(criteria), args.sensors)
 
     to_keep = None
-    if args.sensorOutput:
-        if not args.sensorOutput.exists():
-            logging.error("Sensor output file not found: %s", args.sensorOutput)
+    if args.sensor_output:
+        if not args.sensor_output.exists():
+            logging.error("Sensor output file not found: %s", args.sensor_output)
             return 1
-        to_keep = read_sensor_list(args.sensorOutput)
-        logging.info("Loaded %d output sensors from %s", len(to_keep), args.sensorOutput)
+        to_keep = read_sensor_list(args.sensor_output)
+        logging.info("Loaded %d output sensors from %s", len(to_keep), args.sensor_output)
 
     cache_dir = args.cache
     if cache_dir is None and len(args.files) > 0:
@@ -162,12 +163,12 @@ def run(args) -> int:
             # Append mode: load everything into memory to concatenate
             ds = xdbd.open_multi_dbd_dataset(
                 args.files,
-                skip_first_record=args.skipFirst,
+                skip_first_record=args.skip_first,
                 repair=args.repair,
                 to_keep=to_keep,
                 criteria=criteria,
-                skip_missions=args.skipMission,
-                keep_missions=args.keepMission,
+                skip_missions=args.skip_mission,
+                keep_missions=args.keep_mission,
                 cache_dir=cache_dir,
             )
             logging.info("Read %d records, %d variables", len(ds.i), len(ds.data_vars))
@@ -177,8 +178,6 @@ def run(args) -> int:
                     ds_combined = xr.concat([ds_existing, ds], dim="i")
                 tmp_fd, tmp_path = tempfile.mkstemp(suffix=".nc", dir=args.output.parent)
                 try:
-                    import os
-
                     os.close(tmp_fd)
                     ds_combined.to_netcdf(
                         tmp_path, encoding=_nc_encoding(ds_combined, args.compression)
@@ -204,12 +203,12 @@ def run(args) -> int:
                 n_records, n_files = xdbd.write_multi_dbd_netcdf(
                     args.files,
                     args.output,
-                    skip_first_record=args.skipFirst,
+                    skip_first_record=args.skip_first,
                     repair=args.repair,
                     to_keep=to_keep,
                     criteria=criteria,
-                    skip_missions=args.skipMission,
-                    keep_missions=args.keepMission,
+                    skip_missions=args.skip_mission,
+                    keep_missions=args.keep_mission,
                     cache_dir=cache_dir,
                     compression=args.compression,
                 )
@@ -219,12 +218,12 @@ def run(args) -> int:
                 logging.info("Writing to %s (netCDF4 not available, using xarray)", args.output)
                 ds = xdbd.open_multi_dbd_dataset(
                     args.files,
-                    skip_first_record=args.skipFirst,
+                    skip_first_record=args.skip_first,
                     repair=args.repair,
                     to_keep=to_keep,
                     criteria=criteria,
-                    skip_missions=args.skipMission,
-                    keep_missions=args.keepMission,
+                    skip_missions=args.skip_mission,
+                    keep_missions=args.keep_mission,
                     cache_dir=cache_dir,
                 )
                 ds.to_netcdf(str(args.output), encoding=_nc_encoding(ds, args.compression))

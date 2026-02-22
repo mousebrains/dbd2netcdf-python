@@ -15,7 +15,7 @@ from xarray_dbd.cli import logger
 from xarray_dbd.cli.sensors import _add_common_args
 
 
-def addArgs(subparsers) -> None:
+def add_args(subparsers) -> None:
     """Register the 'cache' subcommand."""
     parser = subparsers.add_parser(
         "cache",
@@ -53,7 +53,7 @@ def _cache_file_exists(cache_dir: Path, crc: str) -> bool:
 
 def run(args) -> int:
     """Execute the cache subcommand."""
-    logger.mkLogger(args)
+    logger.mk_logger(args)
 
     if args.missing and not args.cache:
         logging.error("--missing requires -C/--cache directory")
@@ -67,8 +67,8 @@ def run(args) -> int:
 
     result = xdbd.scan_headers(
         filenames,
-        skip_missions=args.skipMission,
-        keep_missions=args.keepMission,
+        skip_missions=args.skip_mission,
+        keep_missions=args.keep_mission,
     )
 
     crcs = result["sensor_list_crcs"]
@@ -76,15 +76,19 @@ def run(args) -> int:
         logging.warning("No valid files found")
         return 1
 
-    counts = Counter(crcs)
+    all_counts = Counter(crcs)
 
     if args.missing:
         cache_dir = Path(args.cache)
-        counts = {crc: n for crc, n in counts.items() if not _cache_file_exists(cache_dir, crc)}
+        filtered = {
+            crc: n for crc, n in all_counts.items() if not _cache_file_exists(cache_dir, crc)
+        }
+    else:
+        filtered = dict(all_counts)
 
     lines = []
-    for crc in sorted(counts):
-        lines.append(f"{counts[crc]} {crc}")
+    for crc in sorted(filtered):
+        lines.append(f"{filtered[crc]} {crc}")
 
     output = "\n".join(lines) + "\n"
 

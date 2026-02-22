@@ -29,7 +29,7 @@ def _add_common_args(parser) -> None:
     )
     parser.add_argument(
         "-m",
-        "--skipMission",
+        "--skip-mission",
         action="append",
         default=[],
         metavar="mission",
@@ -37,7 +37,7 @@ def _add_common_args(parser) -> None:
     )
     parser.add_argument(
         "-M",
-        "--keepMission",
+        "--keep-mission",
         action="append",
         default=[],
         metavar="mission",
@@ -50,10 +50,10 @@ def _add_common_args(parser) -> None:
         metavar="filename",
         help="Where to store the output (default: stdout)",
     )
-    logger.addArgs(parser)
+    logger.add_args(parser)
 
 
-def addArgs(subparsers) -> None:
+def add_args(subparsers) -> None:
     """Register the 'sensors' subcommand."""
     parser = subparsers.add_parser(
         "sensors",
@@ -66,7 +66,7 @@ def addArgs(subparsers) -> None:
 
 def run(args) -> int:
     """Execute the sensors subcommand."""
-    logger.mkLogger(args)
+    logger.mk_logger(args)
 
     filenames = [str(f) for f in args.files]
     for f in args.files:
@@ -78,8 +78,8 @@ def run(args) -> int:
     result = xdbd.scan_sensors(
         filenames,
         cache_dir=cache_dir,
-        skip_missions=args.skipMission,
-        keep_missions=args.keepMission,
+        skip_missions=args.skip_mission,
+        keep_missions=args.keep_mission,
     )
 
     if result["n_files"] == 0:
@@ -91,8 +91,8 @@ def run(args) -> int:
     sizes = result["sensor_sizes"]
 
     lines = []
-    for i in range(len(names)):
-        lines.append(f"{sizes[i]} {names[i]} {units[i]}")
+    for size, name, unit in zip(sizes, names, units, strict=True):
+        lines.append(f"{size} {name} {unit}")
 
     output = "\n".join(lines) + "\n"
 

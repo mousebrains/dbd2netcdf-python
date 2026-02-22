@@ -107,7 +107,7 @@ def test_mkone_help():
     """mkone --help exits 0."""
     result = run_cli(["xarray_dbd.cli.mkone", "--help"])
     assert result.returncode == 0
-    assert "outputPrefix" in result.stdout
+    assert "output-prefix" in result.stdout
 
 
 def test_mkone_missing_output_prefix():
@@ -134,7 +134,7 @@ def test_mkone_empty_dir():
                 sys.executable,
                 "-m",
                 "xarray_dbd.cli.mkone",
-                "--outputPrefix",
+                "--output-prefix",
                 str(outdir) + "/",
                 str(indir),
             ],

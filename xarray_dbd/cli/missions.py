@@ -14,7 +14,7 @@ from xarray_dbd.cli import logger
 from xarray_dbd.cli.sensors import _add_common_args
 
 
-def addArgs(subparsers) -> None:
+def add_args(subparsers) -> None:
     """Register the 'missions' subcommand."""
     parser = subparsers.add_parser(
         "missions",
@@ -27,7 +27,7 @@ def addArgs(subparsers) -> None:
 
 def run(args) -> int:
     """Execute the missions subcommand."""
-    logger.mkLogger(args)
+    logger.mk_logger(args)
 
     filenames = [str(f) for f in args.files]
     for f in args.files:
@@ -37,8 +37,8 @@ def run(args) -> int:
 
     result = xdbd.scan_headers(
         filenames,
-        skip_missions=args.skipMission,
-        keep_missions=args.keepMission,
+        skip_missions=args.skip_mission,
+        keep_missions=args.keep_mission,
     )
 
     missions = result["mission_names"]
