@@ -466,7 +466,7 @@ def write_multi_dbd_netcdf(
         for name, units in zip(sensor_names, sensor_units, strict=True):
             dtype, _ = fill_vals[name]
             if compression > 0:
-                v = nc.createVariable(
+                v = nc.createVariable(  # type: ignore[call-overload]
                     name,
                     dtype,
                     ("i",),
