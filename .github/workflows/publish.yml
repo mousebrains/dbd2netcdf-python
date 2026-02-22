@@ -23,8 +23,6 @@ jobs:
             archs: x86_64
           - os: ubuntu-latest
             archs: aarch64
-          - os: macos-13
-            archs: x86_64
           - os: macos-latest
             archs: arm64
           - os: windows-latest
