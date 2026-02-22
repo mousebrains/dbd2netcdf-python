@@ -1,5 +1,12 @@
 # xarray-dbd
 
+[![PyPI](https://img.shields.io/pypi/v/xarray-dbd)](https://pypi.org/project/xarray-dbd/)
+[![Python](https://img.shields.io/pypi/pyversions/xarray-dbd)](https://pypi.org/project/xarray-dbd/)
+[![License](https://img.shields.io/pypi/l/xarray-dbd)](License.txt)
+[![CI](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/ci.yml/badge.svg)](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/ci.yml)
+[![Downloads](https://img.shields.io/pypi/dm/xarray-dbd)](https://pypi.org/project/xarray-dbd/)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
 An efficient xarray backend for reading Dinkum Binary Data (DBD) files from
 [Slocum ocean gliders](https://www.teledynemarine.com/brands/webb-research/slocum-glider).
 Slocum gliders are autonomous underwater vehicles widely used in oceanography to collect
