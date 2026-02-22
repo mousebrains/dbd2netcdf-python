@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - LZ4 decompression for compressed `.?cd` files
 - Sensor filtering (`to_keep`), mission filtering (`skip_missions`/`keep_missions`)
 - Corrupted file recovery with `repair=True`
-- Python 3.13+ and free-threaded Python (PEP 703) support
+- Python 3.10+ and free-threaded Python (PEP 703) support
 
 ### Changed
 

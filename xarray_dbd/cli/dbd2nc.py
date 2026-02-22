@@ -3,6 +3,8 @@
 Convert Slocum glider DBD files to NetCDF format.
 """
 
+from __future__ import annotations
+
 import logging
 import sys
 import tempfile

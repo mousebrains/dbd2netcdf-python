@@ -5,6 +5,8 @@ This package provides an xarray backend engine for reading glider DBD files
 directly without conversion to NetCDF, using a C++ parser via pybind11.
 """
 
+from __future__ import annotations
+
 from importlib.metadata import version
 
 from ._dbd_cpp import (

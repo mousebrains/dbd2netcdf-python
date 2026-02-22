@@ -5,6 +5,8 @@
 #
 # Feb-2026, Pat Welch, pat@mousebrains.com
 
+from __future__ import annotations
+
 import getpass
 import logging
 import logging.handlers

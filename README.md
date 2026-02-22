@@ -28,7 +28,7 @@ directly into xarray Datasets without intermediate NetCDF conversion. The C++ bi
 
 ## Installation
 
-**Requires Python 3.13+**
+**Requires Python 3.10+**
 
 ```bash
 pip install xarray-dbd
@@ -254,7 +254,7 @@ print(df.describe())
 
 ## Known Limitations
 
-- **Python 3.13+ required** — uses modern type-hint syntax and C API features.
+- **Python 3.10+ required** — uses `from __future__ import annotations` for modern type-hint syntax.
 - **Free-threaded Python (3.13t)** — pybind11 extensions may crash under the
   no-GIL build; this is an upstream pybind11 limitation.
 - **Timestamps are raw floats** — `m_present_time` values are Unix epoch

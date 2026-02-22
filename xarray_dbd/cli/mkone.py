@@ -9,6 +9,8 @@
 # Modified Jan-2025 to use xarray-dbd
 # Modified Feb-2026 for directory walking and performance
 
+from __future__ import annotations
+
 import logging
 import multiprocessing
 import os

@@ -27,14 +27,14 @@ requirements:
     - cmake >=3.17
     - ninja
   host:
-    - python >=3.13
+    - python >=3.10
     - pip
     - scikit-build-core >=0.5
     - pybind11 >=2.11
     - pybind11-abi
     - numpy >=1.23,<3.0
   run:
-    - python >=3.13
+    - python >=3.10
     - numpy >=1.23,<3.0
     - xarray >=2023.6.0
 

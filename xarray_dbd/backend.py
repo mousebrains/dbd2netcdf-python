@@ -2,6 +2,8 @@
 Xarray backend engine for DBD files using C++ parser
 """
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Iterable
 from pathlib import Path

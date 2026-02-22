@@ -3,6 +3,8 @@
 #
 # Feb-2026, Pat Welch, pat@mousebrains.com
 
+from __future__ import annotations
+
 import logging
 import sys
 from collections import Counter
