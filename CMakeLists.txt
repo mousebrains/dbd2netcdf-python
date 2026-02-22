@@ -48,6 +48,25 @@ else()
     set_source_files_properties(csrc/lz4.c PROPERTIES COMPILE_FLAGS -w)
 endif()
 
+# std::filesystem needs explicit linking on GCC < 9
+include(CheckCXXSourceCompiles)
+set(CMAKE_REQUIRED_FLAGS "-std=c++17")
+check_cxx_source_compiles("
+    #include <filesystem>
+    int main() { std::filesystem::path p(\"/tmp\"); return p.empty(); }
+" STDFS_NO_LIB)
+if(NOT STDFS_NO_LIB)
+    set(CMAKE_REQUIRED_LIBRARIES stdc++fs)
+    check_cxx_source_compiles("
+        #include <filesystem>
+        int main() { std::filesystem::path p(\"/tmp\"); return p.empty(); }
+    " STDFS_NEEDS_STDC_FS)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    if(STDFS_NEEDS_STDC_FS)
+        target_link_libraries(_dbd_cpp PRIVATE stdc++fs)
+    endif()
+endif()
+
 # Platform-specific: Windows needs winsock2 for ntohs/ntohl
 if(WIN32)
     target_link_libraries(_dbd_cpp PRIVATE ws2_32)
