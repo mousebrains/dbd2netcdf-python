@@ -10,7 +10,6 @@ from importlib.metadata import version
 from ._dbd_cpp import (
     read_dbd_file,
     read_dbd_files,
-    read_file_into_buffers,
     scan_headers,
     scan_sensors,
 )
@@ -26,7 +25,6 @@ __all__ = [
     "DBDBackendEntrypoint",
     "read_dbd_file",
     "read_dbd_files",
-    "read_file_into_buffers",
     "scan_headers",
     "scan_sensors",
     "open_dbd_dataset",

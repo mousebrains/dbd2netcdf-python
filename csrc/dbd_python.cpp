@@ -72,6 +72,7 @@ struct HeaderScanResult {
     std::vector<FileHeaderInfo> file_headers;
 };
 
+
 // ── Pure-C++ parsing (called with GIL released) ────────────────────────
 
 HeaderFields extract_header_fields(const Header& hdr) {
@@ -504,52 +505,6 @@ py::dict multi_result_to_python(MultiFileResult&& r) {
 } // anonymous namespace
 
 
-// Read a single file and copy its data directly into pre-allocated numpy
-// batch buffers, avoiding creation of intermediate per-file numpy arrays.
-// Returns number of records written, or -1 on error.
-static py::int_ read_file_into_buffers_impl(
-    const std::string& filename,
-    const std::string& cache_dir,
-    const std::vector<std::string>& to_keep,
-    const std::vector<std::string>& criteria,
-    bool skip_first_record,
-    bool repair,
-    py::list batch_buffers,
-    const std::unordered_map<std::string, int>& name_to_idx,
-    py::ssize_t batch_offset)
-{
-    // Parse file entirely in C++ with GIL released
-    SingleFileResult result;
-    {
-        py::gil_scoped_release release;
-        result = parse_single_file(filename, cache_dir, to_keep,
-                                   criteria, skip_first_record, repair);
-    }
-
-    const size_t n = result.n_records;
-    if (n == 0) return py::int_(0);
-
-    const size_t start = result.start;
-
-    // Copy each column directly into the corresponding batch buffer via memcpy
-    for (size_t i = 0; i < result.columns.size(); ++i) {
-        auto it = name_to_idx.find(result.sensor_info[i].name);
-        if (it == name_to_idx.end()) continue;
-        int buf_idx = it->second;
-
-        py::array buf = batch_buffers[buf_idx];
-
-        std::visit([&buf, batch_offset, start, n](const auto& src_vec) {
-            using T = typename std::decay_t<decltype(src_vec)>::value_type;
-            T* dst = static_cast<T*>(buf.mutable_data()) + batch_offset;
-            const T* src = src_vec.data() + start;
-            std::memcpy(dst, src, n * sizeof(T));
-        }, result.columns[i]);
-    }
-
-    return py::int_(static_cast<py::ssize_t>(n));
-}
-
 
 PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
     m.doc() = "C++ backend for reading Dinkum Binary Data (DBD) files";
@@ -652,21 +607,6 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
         "Scan DBD file headers and return the unified sensor list without reading data.\n\n"
         "Returns a dict with keys: sensor_names, sensor_units, sensor_sizes, "
         "valid_files, n_files"
-    );
-
-    m.def("read_file_into_buffers", &read_file_into_buffers_impl,
-        py::arg("filename"),
-        py::arg("cache_dir"),
-        py::arg("to_keep"),
-        py::arg("criteria"),
-        py::arg("skip_first_record"),
-        py::arg("repair"),
-        py::arg("batch_buffers"),
-        py::arg("name_to_idx"),
-        py::arg("batch_offset"),
-        "Read a single DBD file and copy data directly into pre-allocated "
-        "numpy batch buffers.\n\n"
-        "Returns the number of records written."
     );
 
     m.def("scan_headers",
