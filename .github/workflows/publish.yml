@@ -1,4 +1,4 @@
-name: Publish to PyPI
+name: Build and Publish
 
 on:
   release:
@@ -12,13 +12,29 @@ on:
         type: boolean
 
 jobs:
-  build-and-publish:
-    name: Build and publish to PyPI
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write  # Required for trusted publishing
-      contents: read
+  build-wheels:
+    name: Build wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.22
+
+      - name: Upload wheels
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
+
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -32,11 +48,31 @@ jobs:
           python -m pip install --upgrade pip
           pip install build twine
 
-      - name: Build package
-        run: python -m build
+      - name: Build sdist
+        run: python -m build --sdist
 
       - name: Check package
         run: twine check dist/*
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for trusted publishing
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish to Test PyPI
         if: github.event_name == 'workflow_dispatch' && inputs.test_pypi

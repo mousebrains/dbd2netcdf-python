@@ -130,8 +130,18 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 python_files = "test_*.py"
 
-# Support for free-threaded Python (PEP 703)
 [tool.cibuildwheel]
+build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*"]
+skip = ["*-musllinux_i686", "*-win32", "pp*"]
 free-threaded-support = true
 test-requires = "pytest"
 test-command = "pytest {project}/tests"
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
