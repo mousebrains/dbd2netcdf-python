@@ -2,20 +2,15 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import pytest
 import xarray as xr
+from conftest import CACHE_DIR, DBD_DIR, skip_no_data
 
 import xarray_dbd as xdbd
 from xarray_dbd.backend import DBDDataStore
-
-# Test data directory
-DBD_DIR = Path(__file__).parent.parent / "dbd_files"
-CACHE_DIR = str(DBD_DIR / "cache")
-
-has_test_data = (DBD_DIR / "01330000.dcd").exists()
-skip_no_data = pytest.mark.skipif(not has_test_data, reason="Test data not available")
 
 
 @skip_no_data
@@ -125,3 +120,35 @@ class TestOpenMultiDbdDataset:
                 to_keep=["totally_fake_sensor_xyz"],
             )
         assert "totally_fake_sensor_xyz" in caplog.text
+
+
+@skip_no_data
+class TestWriteMultiDbdNetcdf:
+    """Tests for write_multi_dbd_netcdf()."""
+
+    def test_streaming_write(self):
+        """write_multi_dbd_netcdf produces a valid NetCDF file."""
+        files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        if len(files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+
+        with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+            tmpname = tmp.name
+
+        try:
+            n_records, n_files = xdbd.write_multi_dbd_netcdf(
+                files,
+                tmpname,
+                skip_first_record=True,
+                cache_dir=CACHE_DIR,
+            )
+            assert n_records > 0
+            assert n_files >= 2
+
+            ds = xr.open_dataset(tmpname, decode_timedelta=False)
+            assert "i" in ds.dims
+            assert len(ds.i) == n_records
+            assert len(ds.data_vars) > 0
+            ds.close()
+        finally:
+            Path(tmpname).unlink(missing_ok=True)

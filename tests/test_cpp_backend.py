@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -10,15 +9,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-from xarray_dbd._dbd_cpp import read_dbd_file, read_dbd_files
+from conftest import CACHE_DIR, CPP_REF_DIR, DBD_DIR, RAW_DIR
 
 import xarray_dbd as xdbd
-
-# Test data directory
-DBD_DIR = Path(__file__).parent.parent / "dbd_files"
-CACHE_DIR = str(DBD_DIR / "cache")
-CPP_REF_DIR = Path(os.getenv("DBD_CPP_REF_DIR", "/Users/pat/tpw/mariner/tpw"))
-RAW_DIR = Path(os.getenv("DBD_RAW_DIR", "/Users/pat/tpw/mariner/onboard/raw"))
+from xarray_dbd._dbd_cpp import read_dbd_file, read_dbd_files
 
 
 def test_import():
@@ -143,7 +137,10 @@ def test_nan_fill_for_floats():
             assert col.dtype in (np.int8, np.int16)
 
 
-@pytest.mark.skipif(not CPP_REF_DIR.exists(), reason="C++ reference output not available")
+@pytest.mark.skipif(
+    CPP_REF_DIR is None or not CPP_REF_DIR.exists(),
+    reason="C++ reference output not available",
+)
 def test_record_count_vs_cpp_dbd():
     """Record count matches C++ reference for dbd files."""
     ref = xr.open_dataset(CPP_REF_DIR / "dbd.nc", decode_timedelta=False)
@@ -180,7 +177,10 @@ def test_record_count_vs_cpp_dbd():
     ds.close()
 
 
-@pytest.mark.skipif(not CPP_REF_DIR.exists(), reason="C++ reference output not available")
+@pytest.mark.skipif(
+    CPP_REF_DIR is None or not CPP_REF_DIR.exists(),
+    reason="C++ reference output not available",
+)
 def test_values_match_cpp_tbd():
     """Float values match C++ reference for tbd files."""
     ref = xr.open_dataset(CPP_REF_DIR / "tbd.nc", decode_timedelta=False)
@@ -308,3 +308,23 @@ def test_column_record_consistency():
         assert len(col) == n, (
             f"Sensor {result['sensor_names'][i]}: expected {n} records, got {len(col)}"
         )
+
+
+@pytest.mark.parametrize("ext", [".dcd", ".ecd", ".scd", ".tcd"])
+def test_read_file_types(ext):
+    """Read files of each compressed type."""
+    files = sorted(DBD_DIR.glob(f"*{ext}"))
+    if not files:
+        pytest.skip(f"No {ext} files available")
+
+    f = str(files[0])
+    try:
+        result = read_dbd_file(f, cache_dir=CACHE_DIR, skip_first_record=False)
+    except RuntimeError as e:
+        if "No sensors found" in str(e):
+            pytest.skip(f"Cache not available for {ext} file: {e}")
+        raise
+
+    assert result["n_records"] >= 0
+    assert len(result["sensor_names"]) > 0
+    assert len(result["columns"]) == len(result["sensor_names"])
