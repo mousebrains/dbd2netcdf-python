@@ -4,6 +4,8 @@
 [![Python](https://img.shields.io/pypi/pyversions/xarray-dbd)](https://pypi.org/project/xarray-dbd/)
 [![License](https://img.shields.io/pypi/l/xarray-dbd)](License.txt)
 [![CI](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/ci.yml/badge.svg)](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/codeql.yml/badge.svg)](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/codeql.yml)
+[![Codecov](https://codecov.io/gh/mousebrains/dbd2netcdf-python/branch/main/graph/badge.svg)](https://codecov.io/gh/mousebrains/dbd2netcdf-python)
 [![Downloads](https://img.shields.io/pypi/dm/xarray-dbd)](https://pypi.org/project/xarray-dbd/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
