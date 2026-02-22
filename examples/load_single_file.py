@@ -12,7 +12,7 @@ Usage:
 from argparse import ArgumentParser
 from pathlib import Path
 
-import xarray_dbd as xdbd
+import xarray as xr
 
 parser = ArgumentParser(description="Load a single DBD file and print a summary")
 parser.add_argument("file", type=Path, help="DBD file to load")
@@ -25,8 +25,12 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-# Load a single DBD file
-ds = xdbd.open_dbd_dataset(args.file, cache_dir=args.cache)
+# Load a single DBD file — two equivalent approaches:
+#
+#   ds = xdbd.open_dbd_dataset(args.file, cache_dir=args.cache)
+#   ds = xr.open_dataset(args.file, engine="dbd", cache_dir=args.cache)
+#
+ds = xr.open_dataset(args.file, engine="dbd", cache_dir=args.cache)
 
 # Display basic information
 print("Dataset dimensions:", dict(ds.dims))

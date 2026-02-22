@@ -11,7 +11,8 @@ Pass `--help` to see usage information.
 [Source](load_single_file.py)
 
 Load a single DBD file and print a summary of its dimensions, variables,
-units, depth/lat/lon ranges, and DataFrame shape.
+units, depth/lat/lon ranges, and DataFrame shape. Demonstrates the
+`xr.open_dataset(path, engine="dbd")` interface.
 
 ```bash
 python examples/load_single_file.py -C cache/ file.dbd
