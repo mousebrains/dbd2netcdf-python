@@ -11,7 +11,7 @@ import numpy as np
 import xarray as xr
 from xarray.backends import BackendEntrypoint
 
-from ._dbd_cpp import read_dbd_file, read_dbd_files, scan_headers, scan_sensors
+from ._dbd_cpp import read_dbd_file, read_dbd_files, scan_sensors
 
 logger = logging.getLogger(__name__)
 
@@ -426,7 +426,7 @@ def write_multi_dbd_netcdf(
 
     cache_str = str(cache_dir) if cache_dir else ""
 
-    # Pass 1: scan sensor union and file headers
+    # Pass 1: scan sensor union and valid files in one pass
     sensor_result = scan_sensors(
         file_list,
         cache_dir=cache_str,
@@ -436,9 +436,9 @@ def write_multi_dbd_netcdf(
     sensor_names = list(sensor_result["sensor_names"])
     sensor_units = list(sensor_result["sensor_units"])
     sensor_sizes = list(sensor_result["sensor_sizes"])
-    n_files_scanned = int(sensor_result["n_files"])
+    valid_files = list(sensor_result["valid_files"])
 
-    if n_files_scanned == 0 or not sensor_names:
+    if not valid_files or not sensor_names:
         return 0, 0
 
     # Apply to_keep filter to the union sensor list
@@ -452,124 +452,89 @@ def write_multi_dbd_netcdf(
     if not sensor_names:
         return 0, 0
 
-    # Determine valid files (mission-filtered)
-    header_result = scan_headers(
-        file_list,
-        skip_missions=skip_missions or [],
-        keep_missions=keep_missions or [],
-    )
-    valid_files = set(header_result["filenames"])
+    # Build fill value lookup for sensors missing from a batch
+    fill_vals = {}
+    for name, size in zip(sensor_names, sensor_sizes, strict=True):
+        dtype, fill = _NC_TYPE_INFO.get(size, ("f8", np.float64("nan")))
+        fill_vals[name] = (dtype, fill)
 
-    # Create NetCDF file with unlimited record dimension
+    # Create NetCDF file with variables
+    chunk = 5000
     nc = netCDF4.Dataset(str(output), "w", format="NETCDF4")
     try:
-        nc.createDimension("i", None)  # unlimited
-        chunk = 5000
-
-        # Create variables without _FillValue (matching C++ dbd2netCDF standalone).
-        # Sentinel values (-127 for int8, -32768 for int16, NaN for floats)
-        # are written as regular data values.
-        nc_vars = {}
-        fill_arrays = {}  # pre-built fill arrays for each sensor, shape (chunk,)
-        for name, units, size in zip(sensor_names, sensor_units, sensor_sizes, strict=True):
-            dtype, fill = _NC_TYPE_INFO.get(size, ("f8", np.float64("nan")))
+        nc.createDimension("i", None)
+        for name, units in zip(sensor_names, sensor_units, strict=True):
+            dtype, _ = fill_vals[name]
             if compression > 0:
                 v = nc.createVariable(
-                    name,
-                    dtype,
-                    ("i",),
-                    fill_value=False,
-                    zlib=True,
-                    complevel=compression,
-                    chunksizes=(chunk,),
+                    name, dtype, ("i",), fill_value=False,
+                    zlib=True, complevel=compression, chunksizes=(chunk,),
                 )
             else:
                 v = nc.createVariable(name, dtype, ("i",), fill_value=False)
             v.units = units
-            nc_vars[name] = v
-            fill_arrays[name] = np.dtype(dtype).type(fill)
-
-        # Pass 2: read files, accumulate into batch buffers, flush to NetCDF
-        n_sensors = len(sensor_names)
-        batch_limit = 50000  # flush when batch exceeds this many records
-
-        # Allocate batch buffers (one per union sensor)
-        batch_bufs = []
-        for size in sensor_sizes:
-            dtype, fill = _NC_TYPE_INFO.get(size, ("f8", np.float64("nan")))
-            buf = np.full(batch_limit, fill, dtype=dtype)
-            batch_bufs.append(buf)
-        batch_rows = 0
-
-        offset = 0
-        file_count = 0
-
-        def flush_batch():
-            nonlocal offset, batch_rows
-            if batch_rows == 0:
-                return
-            for si in range(n_sensors):
-                nc_vars[sensor_names[si]][offset : offset + batch_rows] = batch_bufs[si][
-                    :batch_rows
-                ]
-            offset += batch_rows
-            # Reset buffers to fill values
-            for si in range(n_sensors):
-                dtype, fill = _NC_TYPE_INFO.get(sensor_sizes[si], ("f8", np.float64("nan")))
-                batch_bufs[si][:] = fill
-            batch_rows = 0
-
-        # Build union name → buffer index map
-        name_to_buf = {n: i for i, n in enumerate(sensor_names)}
-
-        for fn in file_list:
-            if fn not in valid_files:
-                continue
-            try:
-                result = read_dbd_file(
-                    fn,
-                    cache_dir=cache_str,
-                    to_keep=to_keep or [],
-                    criteria=criteria or [],
-                    skip_first_record=(skip_first_record and file_count > 0),
-                    repair=repair,
-                )
-            except (OSError, RuntimeError, ValueError) as e:
-                logger.warning("Skipping %s: %s", fn, e)
-                continue
-
-            n = int(result["n_records"])
-            if n == 0:
-                file_count += 1
-                continue
-
-            file_names = list(result["sensor_names"])
-            file_cols = list(result["columns"])
-
-            # Ensure batch can hold this file's records
-            if batch_rows + n > len(batch_bufs[0]):
-                flush_batch()
-                # If single file exceeds batch_limit, grow buffers
-                if n > len(batch_bufs[0]):
-                    for si in range(n_sensors):
-                        dtype, fill = _NC_TYPE_INFO.get(sensor_sizes[si], ("f8", np.float64("nan")))
-                        batch_bufs[si] = np.full(n, fill, dtype=dtype)
-
-            # Copy file data into batch buffers
-            for col_idx, col_name in enumerate(file_names):
-                si = name_to_buf.get(col_name)
-                if si is None:
-                    continue
-                batch_bufs[si][batch_rows : batch_rows + n] = file_cols[col_idx]
-
-            batch_rows += n
-            file_count += 1
-
-        flush_batch()
-
-        nc.setncattr("n_files", file_count)
-        nc.setncattr("total_records", offset)
     finally:
         nc.close()
 
-    return offset, file_count
+    # Pass 2: read files in batches, append to NetCDF
+    batch_size = 100
+    offset = 0
+    total_files = 0
+
+    for batch_idx in range(0, len(valid_files), batch_size):
+        batch_files = valid_files[batch_idx : batch_idx + batch_size]
+
+        try:
+            result = read_dbd_files(
+                batch_files,
+                cache_dir=cache_str,
+                to_keep=to_keep or [],
+                criteria=criteria or [],
+                skip_missions=skip_missions or [],
+                keep_missions=keep_missions or [],
+                skip_first_record=skip_first_record,
+                repair=repair,
+            )
+        except (OSError, RuntimeError, ValueError) as e:
+            logger.warning("Error reading batch starting at index %d: %s", batch_idx, e)
+            continue
+
+        n = int(result["n_records"])
+        batch_files_read = int(result["n_files"])
+
+        # For batches after the first, the first file's first record overlaps
+        # with the previous batch's last file — skip it
+        start = 1 if (batch_idx > 0 and skip_first_record and n > 0) else 0
+        n_write = n - start
+
+        total_files += batch_files_read
+
+        if n_write <= 0:
+            continue
+
+        # Build column map from this batch's result
+        result_names = list(result["sensor_names"])
+        result_cols = list(result["columns"])
+        col_map = dict(zip(result_names, result_cols, strict=True))
+
+        # Append to NetCDF
+        nc = netCDF4.Dataset(str(output), "a")
+        try:
+            for name in sensor_names:
+                col = col_map.get(name)
+                if col is not None:
+                    nc.variables[name][offset : offset + n_write] = col[start : start + n_write]
+                else:
+                    _, fill = fill_vals[name]
+                    nc.variables[name][offset : offset + n_write] = np.full(n_write, fill)
+
+            offset += n_write
+            nc.setncattr("n_files", total_files)
+            nc.setncattr("total_records", offset)
+        finally:
+            nc.close()
+
+        # result goes out of scope — batch memory freed
+        del result, result_cols, col_map
+
+    return offset, total_files

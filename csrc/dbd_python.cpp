@@ -58,6 +58,7 @@ struct MultiFileResult {
 
 struct SensorListResult {
     std::vector<SensorInfo> sensor_info;
+    std::vector<std::string> valid_files;
     size_t n_files;
 };
 
@@ -335,7 +336,7 @@ SensorListResult scan_sensor_list(
     const std::vector<std::string>& keep_missions)
 {
     if (filenames.empty()) {
-        return {{}, 0};
+        return {{}, {}, 0};
     }
 
     std::vector<std::string> sorted_files(filenames);
@@ -346,7 +347,7 @@ SensorListResult scan_sensor_list(
     for (const auto& m : keep_missions) Header::addMission(m, keepSet);
 
     SensorsMap smap(cache_dir);
-    size_t n_files = 0;
+    std::vector<std::string> valid_files;
 
     for (const auto& fn : sorted_files) {
         try {
@@ -356,14 +357,14 @@ SensorListResult scan_sensor_list(
             if (hdr.empty()) continue;
             if (!hdr.qProcessMission(skipSet, keepSet)) continue;
             smap.insert(is, hdr, false);
-            ++n_files;
+            valid_files.push_back(fn);
         } catch (const std::exception&) {
             continue;
         }
     }
 
-    if (n_files == 0) {
-        return {{}, 0};
+    if (valid_files.empty()) {
+        return {{}, {}, 0};
     }
 
     smap.setUpForData();
@@ -375,7 +376,8 @@ SensorListResult scan_sensor_list(
         info.push_back({s.name(), s.units(), s.size()});
     }
 
-    return {std::move(info), n_files};
+    size_t nf = valid_files.size();
+    return {std::move(info), std::move(valid_files), nf};
 }
 
 HeaderScanResult scan_file_headers(
@@ -502,6 +504,53 @@ py::dict multi_result_to_python(MultiFileResult&& r) {
 } // anonymous namespace
 
 
+// Read a single file and copy its data directly into pre-allocated numpy
+// batch buffers, avoiding creation of intermediate per-file numpy arrays.
+// Returns number of records written, or -1 on error.
+static py::int_ read_file_into_buffers_impl(
+    const std::string& filename,
+    const std::string& cache_dir,
+    const std::vector<std::string>& to_keep,
+    const std::vector<std::string>& criteria,
+    bool skip_first_record,
+    bool repair,
+    py::list batch_buffers,
+    const std::unordered_map<std::string, int>& name_to_idx,
+    py::ssize_t batch_offset)
+{
+    // Parse file entirely in C++ with GIL released
+    SingleFileResult result;
+    {
+        py::gil_scoped_release release;
+        result = parse_single_file(filename, cache_dir, to_keep,
+                                   criteria, skip_first_record, repair);
+    }
+
+    const size_t n = result.n_records;
+    if (n == 0) return py::int_(0);
+
+    const size_t start = result.start;
+
+    // Copy each column directly into the corresponding batch buffer via memcpy
+    for (size_t i = 0; i < result.columns.size(); ++i) {
+        auto it = name_to_idx.find(result.sensor_info[i].name);
+        if (it == name_to_idx.end()) continue;
+        int buf_idx = it->second;
+
+        py::array buf = batch_buffers[buf_idx];
+
+        std::visit([&buf, batch_offset, start, n](const auto& src_vec) {
+            using T = typename std::decay_t<decltype(src_vec)>::value_type;
+            T* dst = static_cast<T*>(buf.mutable_data()) + batch_offset;
+            const T* src = src_vec.data() + start;
+            std::memcpy(dst, src, n * sizeof(T));
+        }, result.columns[i]);
+    }
+
+    return py::int_(static_cast<py::ssize_t>(n));
+}
+
+
 PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
     m.doc() = "C++ backend for reading Dinkum Binary Data (DBD) files";
 
@@ -584,10 +633,15 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
                 sensor_units.append(si.units);
                 sensor_sizes.append(si.size);
             }
+            py::list valid_files;
+            for (const auto& f : result.valid_files) {
+                valid_files.append(f);
+            }
             py::dict out;
             out["sensor_names"] = sensor_names;
             out["sensor_units"] = sensor_units;
             out["sensor_sizes"] = sensor_sizes;
+            out["valid_files"] = valid_files;
             out["n_files"] = result.n_files;
             return out;
         },
@@ -596,7 +650,23 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
         py::arg("skip_missions") = std::vector<std::string>(),
         py::arg("keep_missions") = std::vector<std::string>(),
         "Scan DBD file headers and return the unified sensor list without reading data.\n\n"
-        "Returns a dict with keys: sensor_names, sensor_units, sensor_sizes, n_files"
+        "Returns a dict with keys: sensor_names, sensor_units, sensor_sizes, "
+        "valid_files, n_files"
+    );
+
+    m.def("read_file_into_buffers", &read_file_into_buffers_impl,
+        py::arg("filename"),
+        py::arg("cache_dir"),
+        py::arg("to_keep"),
+        py::arg("criteria"),
+        py::arg("skip_first_record"),
+        py::arg("repair"),
+        py::arg("batch_buffers"),
+        py::arg("name_to_idx"),
+        py::arg("batch_offset"),
+        "Read a single DBD file and copy data directly into pre-allocated "
+        "numpy batch buffers.\n\n"
+        "Returns the number of records written."
     );
 
     m.def("scan_headers",

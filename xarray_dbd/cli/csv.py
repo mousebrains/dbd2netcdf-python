@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from xarray_dbd._dbd_cpp import read_dbd_file, scan_headers, scan_sensors
+from xarray_dbd._dbd_cpp import read_dbd_file, scan_sensors
 from xarray_dbd.cli import logger
 from xarray_dbd.cli.dbd2nc import read_sensor_list
 
@@ -136,6 +136,7 @@ def run(args) -> int:
 
     sensor_names = list(sensor_result["sensor_names"])
     sensor_sizes = list(sensor_result["sensor_sizes"])
+    valid_files = list(sensor_result["valid_files"])
 
     if to_keep:
         keep_set = set(to_keep)
@@ -146,13 +147,6 @@ def run(args) -> int:
     if not sensor_names:
         logging.warning("No sensors found")
         return 0
-
-    header_result = scan_headers(
-        file_list,
-        skip_missions=args.skipMission or [],
-        keep_missions=args.keepMission or [],
-    )
-    valid_files = set(header_result["filenames"])
 
     # Fill values per dtype for NaN representation in CSV
     fill_map = {1: np.int8(-127), 2: np.int16(-32768)}
