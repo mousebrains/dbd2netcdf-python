@@ -52,6 +52,7 @@ xdbd = "xarray_dbd.cli.main:main"
 Homepage = "https://github.com/mousebrains/dbd2netcdf-python"
 Repository = "https://github.com/mousebrains/dbd2netcdf-python"
 Issues = "https://github.com/mousebrains/dbd2netcdf-python/issues"
+Changelog = "https://github.com/mousebrains/dbd2netcdf-python/blob/main/CHANGELOG.md"
 
 [project.entry-points."xarray.backends"]
 dbd = "xarray_dbd.backend:DBDBackendEntrypoint"
