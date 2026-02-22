@@ -134,6 +134,41 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  test-almalinux:
+    name: Test on AlmaLinux ${{ matrix.alma }}
+    runs-on: ubuntu-latest
+    container: almalinux:${{ matrix.alma }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - alma: '8'
+            python: python3.11
+            install: |
+              dnf -y install python3.11 python3.11-pip python3.11-devel \
+                gcc gcc-c++ cmake make
+          - alma: '9'
+            python: python3.12
+            install: |
+              dnf -y install python3.12 python3.12-pip python3.12-devel \
+                gcc gcc-c++ cmake make
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system packages
+        run: |
+          dnf -y update
+          ${{ matrix.install }}
+
+      - name: Install package and test dependencies
+        run: |
+          ${{ matrix.python }} -m pip install --upgrade pip
+          ${{ matrix.python }} -m pip install -e ".[test]"
+
+      - name: Run tests
+        run: ${{ matrix.python }} -m pytest tests/ -v
+
   test-free-threaded:
     name: Test Free-threaded Python 3.13t
     runs-on: ubuntu-latest
