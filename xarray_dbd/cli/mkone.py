@@ -19,7 +19,6 @@ from pathlib import Path
 
 import xarray_dbd as xdbd
 from xarray_dbd.cli import logger
-from xarray_dbd.cli.dbd2nc import _nc_encoding
 
 
 def processFiles(
@@ -46,32 +45,32 @@ def processFiles(
     keep_missions = args.include if args.include else None
     cache_dir = Path(args.cache) if args.cache else None
 
-    # Read the files
+    # Stream directly to NetCDF without holding all data in memory
     try:
-        ds = xdbd.open_multi_dbd_dataset(
+        n_records, n_files = xdbd.write_multi_dbd_netcdf(
             [Path(f) for f in filenames],
+            ofn,
             skip_first_record=not args.keepFirst,
             repair=args.repair,
             to_keep=to_keep,
             skip_missions=skip_missions,
             keep_missions=keep_missions,
             cache_dir=cache_dir,
+            compression=5,
         )
     except (OSError, ValueError, RuntimeError) as e:
-        logging.error("Failed to read files for %s: %s", ofn, e)
+        logging.error("Failed to process files for %s: %s", ofn, e)
         return
 
-    if len(ds.data_vars) == 0:
-        logging.warning("No data variables for %s, skipping", ofn)
+    if n_records == 0:
+        logging.warning("No data for %s, skipping", ofn)
         return
 
-    # Write to NetCDF with compression to match C++ dbd2netCDF output
-    ds.to_netcdf(ofn, encoding=_nc_encoding(ds, 5))
     logging.info(
-        "Wrote %s with %d records and %d variables in %.2f seconds",
+        "Wrote %s with %d records from %d files in %.2f seconds",
         ofn,
-        len(ds.i),
-        len(ds.data_vars),
+        n_records,
+        n_files,
         time.time() - stime,
     )
 

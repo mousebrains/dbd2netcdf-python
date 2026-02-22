@@ -169,6 +169,7 @@ ColumnDataResult read_columns(std::istream& is,
                     }
                     case 4: {
                         float val = kb.read32(is);
+                        if (std::isinf(val)) val = NAN;
                         if (oi >= 0) {
                             auto& vec = std::get<std::vector<float>>(columns[oi]);
                             if (nRows >= vec.size()) vec.resize(vec.size() * 2, NAN);
@@ -179,6 +180,7 @@ ColumnDataResult read_columns(std::istream& is,
                     }
                     case 8: {
                         double val = kb.read64(is);
+                        if (std::isinf(val)) val = NAN;
                         if (oi >= 0) {
                             auto& vec = std::get<std::vector<double>>(columns[oi]);
                             if (nRows >= vec.size()) vec.resize(vec.size() * 2, NAN);

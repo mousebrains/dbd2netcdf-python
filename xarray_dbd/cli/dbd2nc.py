@@ -156,21 +156,19 @@ def run(args) -> int:
     try:
         logging.info("Processing %d file(s)...", len(args.files))
 
-        ds = xdbd.open_multi_dbd_dataset(
-            args.files,
-            skip_first_record=args.skipFirst,
-            repair=args.repair,
-            to_keep=to_keep,
-            criteria=criteria,
-            skip_missions=args.skipMission,
-            keep_missions=args.keepMission,
-            cache_dir=cache_dir,
-        )
-
-        logging.info("Read %d records", len(ds.i))
-        logging.info("Output %d variables", len(ds.data_vars))
-
         if args.append and args.output.exists():
+            # Append mode: load everything into memory to concatenate
+            ds = xdbd.open_multi_dbd_dataset(
+                args.files,
+                skip_first_record=args.skipFirst,
+                repair=args.repair,
+                to_keep=to_keep,
+                criteria=criteria,
+                skip_missions=args.skipMission,
+                keep_missions=args.keepMission,
+                cache_dir=cache_dir,
+            )
+            logging.info("Read %d records, %d variables", len(ds.i), len(ds.data_vars))
             logging.info("Appending to %s", args.output)
             try:
                 with xr.open_dataset(args.output) as ds_existing:
@@ -180,7 +178,9 @@ def run(args) -> int:
                     import os
 
                     os.close(tmp_fd)
-                    ds_combined.to_netcdf(tmp_path, encoding=_nc_encoding(ds_combined, args.compression))
+                    ds_combined.to_netcdf(
+                        tmp_path, encoding=_nc_encoding(ds_combined, args.compression)
+                    )
                     Path(tmp_path).replace(args.output)
                 except Exception:
                     Path(tmp_path).unlink(missing_ok=True)
@@ -189,8 +189,21 @@ def run(args) -> int:
                 logging.error("Error appending to %s: %s", args.output, e)
                 return 1
         else:
+            # Streaming mode: write directly to NetCDF without holding all data
             logging.info("Writing to %s", args.output)
-            ds.to_netcdf(args.output, encoding=_nc_encoding(ds, args.compression))
+            n_records, n_files = xdbd.write_multi_dbd_netcdf(
+                args.files,
+                args.output,
+                skip_first_record=args.skipFirst,
+                repair=args.repair,
+                to_keep=to_keep,
+                criteria=criteria,
+                skip_missions=args.skipMission,
+                keep_missions=args.keepMission,
+                cache_dir=cache_dir,
+                compression=args.compression,
+            )
+            logging.info("Wrote %d records from %d files", n_records, n_files)
 
         logging.info("Successfully wrote %s", args.output)
         return 0

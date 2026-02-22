@@ -12,6 +12,7 @@ from .backend import (
     DBDBackendEntrypoint,
     open_dbd_dataset,
     open_multi_dbd_dataset,
+    write_multi_dbd_netcdf,
 )
 
 __version__ = version("xarray-dbd")
@@ -23,4 +24,5 @@ __all__ = [
     "scan_sensors",
     "open_dbd_dataset",
     "open_multi_dbd_dataset",
+    "write_multi_dbd_netcdf",
 ]
