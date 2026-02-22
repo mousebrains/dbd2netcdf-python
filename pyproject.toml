@@ -25,6 +25,7 @@ classifiers = [
 dependencies = [
     "numpy>=1.23,<3.0",
     "xarray>=2023.6.0",
+    "netCDF4>=1.6",
 ]
 
 [project.optional-dependencies]

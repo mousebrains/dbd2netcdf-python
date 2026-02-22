@@ -467,8 +467,13 @@ def write_multi_dbd_netcdf(
             dtype, _ = fill_vals[name]
             if compression > 0:
                 v = nc.createVariable(
-                    name, dtype, ("i",), fill_value=False,
-                    zlib=True, complevel=compression, chunksizes=(chunk,),
+                    name,
+                    dtype,
+                    ("i",),
+                    fill_value=False,
+                    zlib=True,
+                    complevel=compression,
+                    chunksizes=(chunk,),
                 )
             else:
                 v = nc.createVariable(name, dtype, ("i",), fill_value=False)

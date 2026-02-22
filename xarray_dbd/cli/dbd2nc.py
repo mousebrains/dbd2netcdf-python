@@ -189,21 +189,43 @@ def run(args) -> int:
                 logging.error("Error appending to %s: %s", args.output, e)
                 return 1
         else:
-            # Streaming mode: write directly to NetCDF without holding all data
-            logging.info("Writing to %s", args.output)
-            n_records, n_files = xdbd.write_multi_dbd_netcdf(
-                args.files,
-                args.output,
-                skip_first_record=args.skipFirst,
-                repair=args.repair,
-                to_keep=to_keep,
-                criteria=criteria,
-                skip_missions=args.skipMission,
-                keep_missions=args.keepMission,
-                cache_dir=cache_dir,
-                compression=args.compression,
-            )
-            logging.info("Wrote %d records from %d files", n_records, n_files)
+            try:
+                import netCDF4  # noqa: F401
+
+                has_netcdf4 = True
+            except ImportError:
+                has_netcdf4 = False
+
+            if has_netcdf4:
+                # Streaming mode: write directly to NetCDF without holding all data
+                logging.info("Writing to %s (streaming)", args.output)
+                n_records, n_files = xdbd.write_multi_dbd_netcdf(
+                    args.files,
+                    args.output,
+                    skip_first_record=args.skipFirst,
+                    repair=args.repair,
+                    to_keep=to_keep,
+                    criteria=criteria,
+                    skip_missions=args.skipMission,
+                    keep_missions=args.keepMission,
+                    cache_dir=cache_dir,
+                    compression=args.compression,
+                )
+                logging.info("Wrote %d records from %d files", n_records, n_files)
+            else:
+                # Fallback: load via xarray then write (works with scipy backend)
+                logging.info("Writing to %s (netCDF4 not available, using xarray)", args.output)
+                ds = xdbd.open_multi_dbd_dataset(
+                    args.files,
+                    skip_first_record=args.skipFirst,
+                    repair=args.repair,
+                    to_keep=to_keep,
+                    criteria=criteria,
+                    skip_missions=args.skipMission,
+                    keep_missions=args.keepMission,
+                    cache_dir=cache_dir,
+                )
+                ds.to_netcdf(str(args.output), encoding=_nc_encoding(ds, args.compression))
 
         logging.info("Successfully wrote %s", args.output)
         return 0
