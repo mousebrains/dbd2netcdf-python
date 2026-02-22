@@ -182,6 +182,9 @@ Open multiple DBD files as a single concatenated xarray Dataset.
 
 ## Examples
 
+See [examples/Examples.md](examples/Examples.md) for standalone scripts with
+plots and detailed documentation.
+
 ### Basic data exploration
 
 ```python
