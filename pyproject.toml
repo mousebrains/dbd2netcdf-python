@@ -123,7 +123,7 @@ warn_no_return = true
 strict_equality = true
 
 [[tool.mypy.overrides]]
-module = ["lz4.*", "xarray.*", "xarray_dbd._dbd_cpp", "pandas.*"]
+module = ["lz4.*", "xarray.*", "pandas.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
