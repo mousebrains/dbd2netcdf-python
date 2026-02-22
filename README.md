@@ -142,15 +142,19 @@ on 18 compressed `.dcd` files (18,054 records, 1,706 sensors):
 
 | Scenario | xarray-dbd | dbdreader | Speedup |
 |---|--:|--:|---|
-| Single file, all sensors | **18 ms** | 147 ms | xarray-dbd 8x faster |
-| Single file, 5 sensors | 3 ms | **1 ms** | dbdreader 3x faster |
-| 18 files, 5 sensors | **31 ms** | 488 ms | xarray-dbd 16x faster |
+| Single file, all sensors | **18 ms** / 2.6 MB | 147 ms / 1.1 MB | xarray-dbd 8x faster |
+| Single file, 5 sensors | 3 ms / 0.3 MB | **1 ms** / 0.7 MB | dbdreader 3x faster |
+| 18 files, 5 sensors | **31 ms** / 0.5 MB | 488 ms / 9.4 MB | xarray-dbd 16x faster |
 
 xarray-dbd reads all sensors in a **single pass** per file and returns a
 complete `xr.Dataset`. dbdreader re-reads the file for each sensor via
-`get()`, so its cost scales with the number of requested sensors. For
-whole-dataset access xarray-dbd is significantly faster; for extracting
-one or two sensors from a single file, dbdreader has less overhead.
+`get()`, so its cost scales with the number of requested sensors.
+
+For whole-dataset access xarray-dbd is significantly faster and uses less
+memory because it reads once and fills a pre-allocated array. dbdreader's
+`MultiDBD` loads all file headers upfront (9.4 MB overhead) and each
+`get()` call re-reads the data files. For extracting one or two sensors
+from a single file, dbdreader has less overhead.
 
 On a larger deployment (908 files, 1.26 M records) dbdreader failed with
 a cache-parsing error while xarray-dbd processed the full dataset in
