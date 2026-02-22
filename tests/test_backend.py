@@ -122,6 +122,49 @@ class TestOpenMultiDbdDataset:
         assert "totally_fake_sensor_xyz" in caplog.text
 
 
+class TestGuessCanOpen:
+    """Tests for DBDBackendEntrypoint.guess_can_open()."""
+
+    def test_valid_extensions(self):
+        """All DBD extensions are recognized."""
+        from xarray_dbd.backend import DBDBackendEntrypoint
+
+        ep = DBDBackendEntrypoint()
+        for ext in [".dbd", ".ebd", ".sbd", ".tbd", ".mbd", ".nbd",
+                     ".dcd", ".ecd", ".scd", ".tcd", ".mcd", ".ncd"]:
+            assert ep.guess_can_open(f"/tmp/file{ext}") is True
+
+    def test_invalid_extensions(self):
+        """Non-DBD extensions return False."""
+        from xarray_dbd.backend import DBDBackendEntrypoint
+
+        ep = DBDBackendEntrypoint()
+        for ext in [".nc", ".csv", ".txt", ".nc4", ".hdf5"]:
+            assert ep.guess_can_open(f"/tmp/file{ext}") is False
+
+    def test_invalid_types(self):
+        """Non-string/Path types return False."""
+        from xarray_dbd.backend import DBDBackendEntrypoint
+
+        ep = DBDBackendEntrypoint()
+        assert ep.guess_can_open(None) is False
+        assert ep.guess_can_open(123) is False
+        assert ep.guess_can_open({"key": "val"}) is False
+
+
+class TestOpenMultiConflictingMissions:
+    """Tests for open_multi_dbd_dataset mission filter validation."""
+
+    def test_conflicting_mission_filters(self):
+        """skip_missions + keep_missions raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot specify both"):
+            xdbd.open_multi_dbd_dataset(
+                ["fake.dbd"],
+                skip_missions=["a"],
+                keep_missions=["b"],
+            )
+
+
 @skip_no_data
 class TestWriteMultiDbdNetcdf:
     """Tests for write_multi_dbd_netcdf()."""
@@ -148,6 +191,82 @@ class TestWriteMultiDbdNetcdf:
             ds = xr.open_dataset(tmpname, decode_timedelta=False)
             assert "i" in ds.dims
             assert len(ds.i) == n_records
+            assert len(ds.data_vars) > 0
+            ds.close()
+        finally:
+            Path(tmpname).unlink(missing_ok=True)
+
+    def test_conflicting_mission_filters(self):
+        """skip_missions + keep_missions raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot specify both"):
+            xdbd.write_multi_dbd_netcdf(
+                [DBD_DIR / "01330000.dcd"],
+                "/tmp/never.nc",
+                skip_missions=["a"],
+                keep_missions=["b"],
+                cache_dir=CACHE_DIR,
+            )
+
+    def test_empty_file_list(self):
+        """Empty file list returns (0, 0)."""
+        n_records, n_files = xdbd.write_multi_dbd_netcdf([], "/tmp/never.nc", cache_dir=CACHE_DIR)
+        assert (n_records, n_files) == (0, 0)
+
+    def test_no_matching_sensors(self):
+        """to_keep with nonexistent sensors returns (0, 0)."""
+        files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+            tmpname = tmp.name
+        try:
+            n_records, n_files = xdbd.write_multi_dbd_netcdf(
+                files,
+                tmpname,
+                to_keep=["totally_nonexistent_sensor_xyz"],
+                cache_dir=CACHE_DIR,
+            )
+            assert (n_records, n_files) == (0, 0)
+        finally:
+            Path(tmpname).unlink(missing_ok=True)
+
+    def test_to_keep_filter(self):
+        """to_keep limits output variables."""
+        files = sorted(DBD_DIR.glob("*.dcd"))[:2]
+        if len(files) < 1:
+            pytest.skip("No .dcd files available")
+
+        with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+            tmpname = tmp.name
+        try:
+            n_records, n_files = xdbd.write_multi_dbd_netcdf(
+                files,
+                tmpname,
+                to_keep=["m_present_time"],
+                cache_dir=CACHE_DIR,
+            )
+            assert n_records > 0
+            ds = xr.open_dataset(tmpname, decode_timedelta=False)
+            assert list(ds.data_vars) == ["m_present_time"]
+            ds.close()
+        finally:
+            Path(tmpname).unlink(missing_ok=True)
+
+    def test_no_compression(self):
+        """compression=0 produces valid output."""
+        files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        if not files:
+            pytest.skip("No .dcd files available")
+
+        with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+            tmpname = tmp.name
+        try:
+            n_records, n_files = xdbd.write_multi_dbd_netcdf(
+                files,
+                tmpname,
+                compression=0,
+                cache_dir=CACHE_DIR,
+            )
+            assert n_records > 0
+            ds = xr.open_dataset(tmpname, decode_timedelta=False)
             assert len(ds.data_vars) > 0
             ds.close()
         finally:

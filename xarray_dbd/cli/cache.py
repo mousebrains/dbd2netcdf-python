@@ -100,3 +100,25 @@ def run(args) -> int:
         sys.stdout.write(output)
 
     return 0
+
+
+def main():
+    """Standalone entry point."""
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(
+        description="Scan DBD file headers and output sensor_list_crc values with file counts",
+    )
+    _add_common_args(parser)
+    parser.add_argument(
+        "--missing",
+        action="store_true",
+        default=False,
+        help="Only show CRCs whose cache file is absent from the cache directory",
+    )
+    args = parser.parse_args()
+    sys.exit(run(args))
+
+
+if __name__ == "__main__":
+    main()

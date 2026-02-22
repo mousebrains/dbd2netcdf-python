@@ -61,3 +61,19 @@ def run(args) -> int:
         sys.stdout.write(output)
 
     return 0
+
+
+def main():
+    """Standalone entry point."""
+    from argparse import ArgumentParser
+
+    parser = ArgumentParser(
+        description="Scan DBD file headers and output mission names with file counts",
+    )
+    _add_common_args(parser)
+    args = parser.parse_args()
+    sys.exit(run(args))
+
+
+if __name__ == "__main__":
+    main()
