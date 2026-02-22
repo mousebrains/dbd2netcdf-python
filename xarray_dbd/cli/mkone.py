@@ -10,6 +10,7 @@
 # Modified Feb-2026 for directory walking and performance
 
 import logging
+import multiprocessing
 import os
 import re
 import sys
@@ -222,6 +223,12 @@ def addArgs(subparsers) -> None:
     parser.set_defaults(func=run)
 
 
+def _worker(ofn, filenames, args, sensors_filename=None):
+    """Multiprocessing worker — sets up logging then processes one output file."""
+    logger.mkLogger(args)
+    processFiles(ofn, filenames, args, sensors_filename)
+
+
 def run(args) -> int:
     """Execute the mkone batch processing."""
     logger.mkLogger(args)
@@ -248,15 +255,54 @@ def run(args) -> int:
 
     files = discover_files(args.path)
 
+    # Collect work items: (ofn, filenames, sensors_filename)
+    work = []
+
     if "d" in files:
-        processDBD(files["d"], args)
+        d_files = sorted(files["d"])
+
+        # Sensor extraction and partitioning (fast, sequential)
+        allSensors = set(extractSensors(d_files, args))
+        dbdSensors = {x for x in allSensors if x.startswith(("m_", "c_"))}
+        sciSensors = {x for x in allSensors if x.startswith("sci_")}
+        otroSensors = allSensors.difference(dbdSensors).difference(sciSensors)
+        sciSensors.add("m_present_time")
+        otroSensors.add("m_present_time")
+
+        writeSensors(allSensors, args.outputPrefix + "dbd.all.sensors")
+        dbdFN = writeSensors(dbdSensors, args.outputPrefix + "dbd.sensors")
+        sciFN = writeSensors(sciSensors, args.outputPrefix + "dbd.sci.sensors")
+        otroFN = writeSensors(otroSensors, args.outputPrefix + "dbd.other.sensors")
+
+        work.append((args.outputPrefix + "dbd.nc", d_files, dbdFN))
+        work.append((args.outputPrefix + "dbd.sci.nc", d_files, sciFN))
+        work.append((args.outputPrefix + "dbd.other.nc", d_files, otroFN))
 
     for key in ["e", "s", "t", "m", "n"]:
         if key in files:
-            processAll(files[key], args, key + "bd.nc")
+            work.append((args.outputPrefix + key + "bd.nc", sorted(files[key]), None))
+
+    if not work:
+        logging.info("No files to process")
+        return 0
+
+    # Spawn one process per output file
+    processes = []
+    for ofn, flist, sensors_fn in work:
+        p = multiprocessing.Process(target=_worker, args=(ofn, flist, args, sensors_fn))
+        processes.append((p, ofn))
+        p.start()
+
+    # Wait for all to complete
+    failed = False
+    for p, ofn in processes:
+        p.join()
+        if p.exitcode != 0:
+            logging.error("Worker for %s exited with code %d", ofn, p.exitcode)
+            failed = True
 
     logging.info("All processing complete in %.2f seconds", time.time() - stime)
-    return 0
+    return 1 if failed else 0
 
 
 def main():
