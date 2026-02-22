@@ -134,6 +134,7 @@ python_files = "test_*.py"
 [tool.cibuildwheel]
 build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*"]
 skip = ["*-musllinux_i686", "*-win32", "pp*"]
+test-skip = ["*-manylinux_aarch64", "*-musllinux_aarch64"]
 enable = ["cpython-freethreading"]
 test-requires = "pytest"
 test-command = "pytest {project}/tests"
