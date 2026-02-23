@@ -308,23 +308,21 @@ mdbd = dbdreader.MultiDBD(
 
 ### Key differences from dbdreader
 
-- **Read-once architecture.** All sensor data is loaded in a single C++
-  pass at construction time. Subsequent `get()` calls are instant numpy
-  slicing — no file re-reads. This means all sensors are in memory
-  regardless of which parameters you request via `get()`, so peak RSS
-  is higher than dbdreader for selective reads. Use the xarray API with
-  `to_keep` if memory is a concern.
+- **Lazy incremental loading.** Construction only scans file headers and
+  sensor metadata — no data records are read. Each `get()` call loads
+  only the newly-requested columns (plus the time variable) and caches
+  them for future calls. This keeps peak RSS proportional to the sensors
+  you actually use, not the total sensor count.
 
 - **`skip_initial_line` semantics.** When reading multiple files, the
   first contributing file keeps all its records; subsequent files skip
   their first record. dbdreader skips the first record of every file.
   Multi-file record counts may therefore differ by up to N-1.
 
-- **Native dtype preservation.** `get()` with `return_nans=False`
-  (the default) preserves the sensor's native dtype — int8 and int16
-  sensors return integer arrays rather than float64. dbdreader always
-  returns float64. Pass `return_nans=True` to get float64 output with
-  NaN fill values, matching dbdreader's behavior.
+- **Float64 output.** `get()` always returns float64 arrays, matching
+  dbdreader's behavior. Integer fill values (-127 for int8, -32768 for
+  int16) are filtered out (with `return_nans=False`) or replaced with
+  NaN (with `return_nans=True`).
 
 - **Time limits are per-file.** `set_time_limits()` filters by file
   open time, including or excluding entire files. It does not filter
@@ -478,8 +476,9 @@ print(df.describe())
   no-GIL build; this is an upstream pybind11 limitation.
 - **Timestamps are raw floats** — `m_present_time` values are Unix epoch
   seconds (float64). Convert with `pandas.to_datetime(ds['m_present_time'], unit='s')`.
-- **No lazy loading** — all sensor data is read into memory on `open_dataset()`.
-  For very large deployments, use `to_keep` to select only needed sensors.
+- **No lazy loading for xarray API** — `open_dataset()` reads all sensor data
+  into memory. For very large deployments, use `to_keep` to select only needed
+  sensors. The dbdreader2 API (`DBD`/`MultiDBD`) uses lazy incremental loading.
 
 ## Troubleshooting
 

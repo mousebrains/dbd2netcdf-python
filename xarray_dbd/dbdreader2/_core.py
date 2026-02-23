@@ -10,7 +10,7 @@ import os
 
 import numpy
 
-from xarray_dbd._dbd_cpp import read_dbd_file, read_dbd_files, scan_headers
+from xarray_dbd._dbd_cpp import read_dbd_file, read_dbd_files, scan_headers, scan_sensors
 
 from ._cache import DBDCache
 from ._errors import (
@@ -80,27 +80,53 @@ class DBD:
         else:
             self.cacheDir = cacheDir
 
-        result = read_dbd_file(
-            filename,
-            cache_dir=self.cacheDir or "",
-            skip_first_record=skip_initial_line,
-        )
+        cache = self.cacheDir or ""
 
-        self.headerInfo = result["header"]
-        self.cacheFound = bool(self.cacheDir and os.path.isdir(self.cacheDir))
-        self.cacheID = self.headerInfo.get("sensor_list_crc", "").lower()
-
-        names = result["sensor_names"]
-        units = result["sensor_units"]
+        # Lightweight metadata-only scan — no data records read
+        sensor_result = scan_sensors([filename], cache_dir=cache)
+        names = sensor_result["sensor_names"]
+        units = sensor_result["sensor_units"]
         self.parameterNames = list(names)
         self.parameterUnits = dict(zip(names, units, strict=True))
 
-        # Store column data keyed by sensor name
-        self._columns: dict[str, numpy.ndarray] = {}
-        for i, name in enumerate(names):
-            self._columns[name] = numpy.asarray(result["columns"][i])
+        hdr_result = scan_headers([filename])
+        self.headerInfo: dict[str, str] = {}
+        if hdr_result["filenames"]:
+            self.headerInfo["mission_name"] = hdr_result["mission_names"][0]
+            self.headerInfo["sensor_list_crc"] = hdr_result["sensor_list_crcs"][0]
+            self.headerInfo["fileopen_time"] = hdr_result["fileopen_times"][0]
+
+        self.cacheFound = bool(self.cacheDir and os.path.isdir(self.cacheDir))
+        self.cacheID = self.headerInfo.get("sensor_list_crc", "").lower()
 
         self.timeVariable = self._set_timeVariable()
+
+        # Lazy state — no columns loaded yet
+        self._columns: dict[str, numpy.ndarray] = {}
+        self._loaded_params: set[str] = set()
+        self._closed = False
+
+    # -- lazy loading ------------------------------------------------------------
+
+    def _ensure_loaded(self, params):
+        """Load *params* (plus time variable) if not already in memory."""
+        needed = (set(params) | {self.timeVariable}) - self._loaded_params
+        if not needed:
+            return
+        result = read_dbd_file(
+            self.filename,
+            cache_dir=self.cacheDir or "",
+            to_keep=sorted(needed),
+            skip_first_record=self.skip_initial_line,
+        )
+        # First load: upgrade headerInfo to the full header dict
+        if not self._loaded_params:
+            self.headerInfo = result["header"]
+        names = result["sensor_names"]
+        for i, name in enumerate(names):
+            if name:  # sparse result: non-empty name means kept column
+                self._columns[name] = numpy.asarray(result["columns"][i])
+        self._loaded_params |= {n for n in names if n}
 
     # -- public methods ----------------------------------------------------------
 
@@ -120,7 +146,9 @@ class DBD:
 
     def close(self):
         """Release stored data."""
+        self._closed = True
         self._columns = {}
+        self._loaded_params = set()
         self.parameterNames = []
         self.parameterUnits = {}
 
@@ -150,7 +178,7 @@ class DBD:
         check_for_invalid_parameters : bool
             Raise on unknown sensor names.
         """
-        if not self._columns:
+        if self._closed:
             raise DbdError(DBD_ERROR_NO_TIME_VARIABLE, "DBD object is closed")
 
         if max_values_to_read > 0 and len(parameters) != 1:
@@ -158,6 +186,8 @@ class DBD:
                 "Limiting the values to be read for multiple parameters "
                 "potentially yields undefined behaviour.\n"
             )
+
+        self._ensure_loaded(parameters)
 
         if check_for_invalid_parameters:
             invalid = [p for p in parameters if p not in self._columns]
@@ -283,25 +313,21 @@ class DBD:
         t_finite = numpy.isfinite(t)
         mask = t_finite & ~fill_mask
         t = t[mask]
-        v = v[mask]
-
-        if not is_int:
-            v = v.astype(numpy.float64)
+        v = v[mask].astype(numpy.float64)
 
         # Lat/lon filtering and conversion
         if param in LATLON_PARAMS:
-            vf = v.astype(numpy.float64)
-            t, vf = _filter_latlon(t, vf, param, discard_bad_ll)
+            t, v = _filter_latlon(t, v, param, discard_bad_ll)
             if decimal_ll:
-                vf = _convertToDecimal(vf)
-            return t, vf
+                v = _convertToDecimal(v)
 
-        return t, v if is_int else v.astype(numpy.float64)
+        return t, v
 
     def _get_sync(self, *params, decimalLatLon=True, discardBadLatLon=True):  # noqa: N803
         """Internal sync implementation."""
-        if not self._columns:
+        if self._closed:
             raise DbdError(DBD_ERROR_NO_TIME_VARIABLE, "DBD object is closed")
+        self._ensure_loaded(params)
         t_all = self._columns[self.timeVariable].astype(numpy.float64)
         tv_pairs = [
             self._extract_param(t_all, p, False, decimalLatLon, discardBadLatLon)
@@ -448,19 +474,12 @@ class MultiDBD:
                 eng_dbds.append(dbd)
         self.dbds: dict[str, list[DBD]] = {"eng": eng_dbds, "sci": sci_dbds}
 
-        # Bulk read
+        # Lazy state — metadata only, no data columns loaded
         self._eng_columns: dict[str, numpy.ndarray] = {}
         self._sci_columns: dict[str, numpy.ndarray] = {}
         eng_files = [d.filename for d in eng_dbds]
         sci_files = [d.filename for d in sci_dbds]
         self._load(eng_files, sci_files)
-
-        # Build parameter name lists
-        self.parameterNames = {
-            "eng": sorted(self._eng_columns.keys()),
-            "sci": sorted(self._sci_columns.keys()),
-        }
-        self.parameterUnits = {**self._eng_units, **self._sci_units}
 
         # Time limits
         self.time_limits_dataset: tuple = (None, None)
@@ -492,12 +511,13 @@ class MultiDBD:
                 "potentially yields undefined behaviour.\n"
             )
 
+        self._ensure_loaded(parameters)
+
         # Validate parameters
-        invalid = [
-            p
-            for p in parameters
-            if p not in self._eng_columns and p not in self._sci_columns
-        ]
+        all_known = set(self.parameterNames.get("eng", [])) | set(
+            self.parameterNames.get("sci", [])
+        )
+        invalid = [p for p in parameters if p not in all_known]
         if invalid:
             if len(invalid) == 1:
                 mesg = f"Parameter {invalid[0]} is an unknown glider sensor name."
@@ -684,6 +704,8 @@ class MultiDBD:
             dbd.close()
         self._eng_columns = {}
         self._sci_columns = {}
+        self._loaded_eng_params = set()
+        self._loaded_sci_params = set()
         self.parameterNames = {"eng": [], "sci": []}
         self.parameterUnits = {}
 
@@ -703,30 +725,91 @@ class MultiDBD:
             raise RuntimeError("MultiDBD object is closed")
 
     def _load(self, eng_files, sci_files):
-        """Bulk-read eng and sci file sets via C++ backend."""
+        """Scan metadata for eng and sci file sets (no data read)."""
         cache = self.cacheDir or ""
-        skip = self.skip_initial_line
 
+        # Save previous loaded params for reload (set_skip_initial_line, time limits)
+        prev_eng = set(self._loaded_eng_params) if hasattr(self, "_loaded_eng_params") else set()
+        prev_sci = set(self._loaded_sci_params) if hasattr(self, "_loaded_sci_params") else set()
+
+        self._eng_files = eng_files
+        self._sci_files = sci_files
         self._eng_columns = {}
         self._sci_columns = {}
-        self._eng_units = {}
-        self._sci_units = {}
+        self._eng_units: dict[str, str] = {}
+        self._sci_units: dict[str, str] = {}
+        self._loaded_eng_params: set[str] = set()
+        self._loaded_sci_params: set[str] = set()
+        self._eng_param_names: list[str] = []
+        self._sci_param_names: list[str] = []
 
         if eng_files:
-            result = read_dbd_files(eng_files, cache_dir=cache, skip_first_record=skip)
+            result = scan_sensors(eng_files, cache_dir=cache)
             names = result["sensor_names"]
             units = result["sensor_units"]
-            for i, name in enumerate(names):
-                self._eng_columns[name] = numpy.asarray(result["columns"][i])
+            self._eng_param_names = list(names)
             self._eng_units = dict(zip(names, units, strict=True))
 
         if sci_files:
-            result = read_dbd_files(sci_files, cache_dir=cache, skip_first_record=skip)
+            result = scan_sensors(sci_files, cache_dir=cache)
             names = result["sensor_names"]
             units = result["sensor_units"]
+            self._sci_param_names = list(names)
+            self._sci_units = dict(zip(names, units, strict=True))
+
+        self.parameterNames = {
+            "eng": sorted(self._eng_param_names),
+            "sci": sorted(self._sci_param_names),
+        }
+        self.parameterUnits = {**self._eng_units, **self._sci_units}
+
+        # Reload previously-loaded params (for set_skip_initial_line / time limits)
+        if prev_eng or prev_sci:
+            self._ensure_loaded(prev_eng | prev_sci)
+
+    def _ensure_loaded(self, params):
+        """Load requested params (plus time variables) if not already in memory."""
+        cache = self.cacheDir or ""
+        skip = self.skip_initial_line
+        eng_names_set = set(self._eng_param_names)
+        sci_names_set = set(self._sci_param_names)
+
+        # Partition requested params into eng/sci
+        eng_requested = {p for p in params if p in eng_names_set}
+        sci_requested = {p for p in params if p in sci_names_set}
+
+        # Add time variables
+        if eng_requested:
+            for tv in ("m_present_time", "sci_m_present_time"):
+                if tv in eng_names_set:
+                    eng_requested.add(tv)
+        if sci_requested:
+            for tv in ("m_present_time", "sci_m_present_time"):
+                if tv in sci_names_set:
+                    sci_requested.add(tv)
+
+        eng_needed = eng_requested - self._loaded_eng_params
+        sci_needed = sci_requested - self._loaded_sci_params
+
+        if eng_needed and self._eng_files:
+            result = read_dbd_files(
+                self._eng_files, cache_dir=cache, to_keep=sorted(eng_needed),
+                skip_first_record=skip,
+            )
+            names = result["sensor_names"]
+            for i, name in enumerate(names):
+                self._eng_columns[name] = numpy.asarray(result["columns"][i])
+            self._loaded_eng_params |= set(names)
+
+        if sci_needed and self._sci_files:
+            result = read_dbd_files(
+                self._sci_files, cache_dir=cache, to_keep=sorted(sci_needed),
+                skip_first_record=skip,
+            )
+            names = result["sensor_names"]
             for i, name in enumerate(names):
                 self._sci_columns[name] = numpy.asarray(result["columns"][i])
-            self._sci_units = dict(zip(names, units, strict=True))
+            self._loaded_sci_params |= set(names)
 
     def _find_time_var(self, columns):
         """Return the time variable name present in *columns*."""
@@ -753,8 +836,6 @@ class MultiDBD:
         t_all = columns[tv_name].astype(numpy.float64)
         v = columns[param]
 
-        is_int = numpy.issubdtype(v.dtype, numpy.integer)
-
         if return_nans:
             vf = v.astype(numpy.float64)
             vf[_is_fill(v)] = numpy.nan
@@ -764,19 +845,14 @@ class MultiDBD:
         t_finite = numpy.isfinite(t_all)
         mask = t_finite & ~fill_mask
         t = t_all[mask]
-        v = v[mask]
-
-        if not is_int:
-            v = v.astype(numpy.float64)
+        v = v[mask].astype(numpy.float64)
 
         if param in LATLON_PARAMS:
-            vf = v.astype(numpy.float64)
-            t, vf = _filter_latlon(t, vf, param, discard_bad_ll)
+            t, v = _filter_latlon(t, v, param, discard_bad_ll)
             if decimal_ll:
-                vf = _convertToDecimal(vf)
-            return t, vf
+                v = _convertToDecimal(v)
 
-        return t, v if is_int else v.astype(numpy.float64)
+        return t, v
 
     def _resolve_ifun(self, param, factory):
         """Resolve interpolating function factory for a parameter."""
@@ -833,11 +909,6 @@ class MultiDBD:
             "sci": [d for d in self.dbds["sci"] if d.filename in kept],
         }
         self._load(eng_files, sci_files)
-        self.parameterNames = {
-            "eng": sorted(self._eng_columns.keys()),
-            "sci": sorted(self._sci_columns.keys()),
-        }
-        self.parameterUnits = {**self._eng_units, **self._sci_units}
 
     def _convert_seconds(self, timestring):
         """Parse a time string in either short or long format."""

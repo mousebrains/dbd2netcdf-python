@@ -40,7 +40,7 @@ shared libraries.
 | Single file, all sensors | 120 MB | 119 MB | **60 MB** | 87 MB |
 | Single file, 5 sensors | 120 MB | 118 MB | **59 MB** | 59 MB |
 | 18 files, all sensors | 993 MB | 1,140 MB | **71 MB** | 327 MB |
-| 18 files, 5 sensors | **91 MB** | 1,132 MB | 70 MB | 72 MB |
+| 18 files, 5 sensors | **91 MB** | 91 MB | 70 MB | 72 MB |
 
 ### Analysis
 
@@ -68,11 +68,10 @@ because the C++ backend discards non-matching columns early.
 **dbdreader2 compatibility layer.** The dbdreader2 wrapper adds
 negligible overhead to wall time — single-file timings are identical to
 the xarray API, and multi-file reads add only ~100 ms of Python
-wrapping. However, the dbdreader2 layer currently loads all sensors
-regardless of which parameters are requested via `get()`, so its peak
-RSS matches the all-sensor case even for filtered reads (1,132 MB vs
-91 MB). Users needing low-memory filtered reads should use the xarray
-API with `to_keep` instead.
+wrapping. The dbdreader2 layer uses lazy incremental loading: construction
+only scans file metadata, and each `get()` call reads only the
+newly-requested columns. For filtered reads (5 sensors), peak RSS is
+comparable to the xarray API's `to_keep` (~91 MB).
 
 ## NetCDF Writer: C++ dbd2netCDF vs xdbd 2nc
 

@@ -128,9 +128,11 @@ class TestDBD:
         dbd.close()
 
     def test_get_integer_sensor(self):
-        """Integer fill values (-127 / -32768) should be filtered out."""
+        """Integer sensors are promoted to float64 with fill values filtered out."""
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
         names = dbd.parameterNames
+        # Load all sensors to find integer ones
+        dbd._ensure_loaded(names)
         int_sensors = [
             n for n in names
             if n in dbd._columns and dbd._columns[n].dtype in (np.int8, np.int16)
@@ -138,6 +140,9 @@ class TestDBD:
         if not int_sensors:
             pytest.skip("No integer sensors in test file")
         t, v = dbd.get(int_sensors[0])
+        # Return is always float64 now
+        assert v.dtype == np.float64
+        # Fill values should be filtered out
         if dbd._columns[int_sensors[0]].dtype == np.int8:
             assert not np.any(v == -127)
         else:
@@ -1118,3 +1123,76 @@ class TestTopLevelImport:
         assert hasattr(dbdreader2, "DBDCache")
         assert hasattr(dbdreader2, "DBDList")
         assert hasattr(dbdreader2, "toDec")
+
+
+# ---------------------------------------------------------------------------
+# TestLazyLoading — verify lazy construction + incremental merge
+# ---------------------------------------------------------------------------
+
+
+class TestLazyLoading:
+    def test_no_columns_at_construction(self):
+        """DBD._columns is empty and _loaded_params is empty immediately after init."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        assert dbd._columns == {}
+        assert dbd._loaded_params == set()
+        dbd.close()
+
+    def test_get_loads_only_requested(self):
+        """After get('m_depth'), _loaded_params contains exactly {m_depth, timeVariable}."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        dbd.get("m_depth")
+        assert "m_depth" in dbd._loaded_params
+        assert dbd.timeVariable in dbd._loaded_params
+        # Should not have loaded other sensors
+        assert len(dbd._loaded_params) == 2
+        dbd.close()
+
+    def test_incremental_merge(self):
+        """After get('m_depth') then get('m_lat'), both columns present."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        dbd.get("m_depth")
+        dbd.get("m_lat")
+        assert {"m_depth", "m_lat", dbd.timeVariable} <= dbd._loaded_params
+        assert "m_depth" in dbd._columns
+        assert "m_lat" in dbd._columns
+        dbd.close()
+
+    def test_second_get_no_reread(self):
+        """Second get('m_depth') does not change _loaded_params (cache hit)."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        dbd.get("m_depth")
+        params_after_first = set(dbd._loaded_params)
+        dbd.get("m_depth")
+        assert dbd._loaded_params == params_after_first
+        dbd.close()
+
+    def test_multi_lazy_no_columns_at_construction(self):
+        """MultiDBD after init has empty _eng_columns and _sci_columns."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        assert mdbd._eng_columns == {}
+        assert mdbd._sci_columns == {}
+        # But parameterNames should already be populated from scan_sensors
+        assert len(mdbd.parameterNames["eng"]) > 0
+        mdbd.close()
+
+    def test_multi_incremental_merge(self):
+        """After get('m_depth') then get('m_lat'), both columns present."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        mdbd.get("m_depth")
+        mdbd.get("m_lat")
+        assert "m_depth" in mdbd._eng_columns
+        assert "m_lat" in mdbd._eng_columns
+        mdbd.close()
+
+    def test_multi_lazy_filtered_get(self):
+        """MultiDBD.get('m_depth') only loads time + depth into eng columns."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        mdbd.get("m_depth")
+        # Should have m_depth + time variable(s), not all sensors
+        assert "m_depth" in mdbd._loaded_eng_params
+        assert "m_present_time" in mdbd._loaded_eng_params
+        # Only time vars + m_depth should be loaded (≤ 3: m_depth + up to 2 time vars)
+        assert len(mdbd._loaded_eng_params) <= 3
+        assert len(mdbd._loaded_eng_params) < len(mdbd.parameterNames["eng"])
+        mdbd.close()
