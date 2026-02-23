@@ -12,8 +12,29 @@ on:
         type: boolean
 
 jobs:
+  validate-version:
+    name: Validate tag matches pyproject.toml
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(python3 -c "
+          import tomllib, pathlib
+          d = tomllib.loads(pathlib.Path('pyproject.toml').read_text())
+          print(d['project']['version'])")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Tag v$TAG does not match pyproject.toml version $PKG"
+            exit 1
+          fi
+          echo "Version $PKG matches tag"
+
   build-wheels:
     name: Build wheels on ${{ matrix.os }} (${{ matrix.archs }})
+    needs: [validate-version]
+    if: always() && (needs.validate-version.result == 'success' || needs.validate-version.result == 'skipped')
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -50,6 +71,8 @@ jobs:
 
   build-sdist:
     name: Build source distribution
+    needs: [validate-version]
+    if: always() && (needs.validate-version.result == 'success' || needs.validate-version.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
