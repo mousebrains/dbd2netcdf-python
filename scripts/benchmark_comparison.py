@@ -23,8 +23,10 @@ Run a single benchmark (used internally by the harness):
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 from argparse import ArgumentParser
 from pathlib import Path
 
@@ -238,6 +240,48 @@ def bench(
     return best, delta_rss
 
 
+def bench_cmd(
+    label: str,
+    cmd: list[str],
+    repeats: int,
+    baseline_rss: int,
+) -> tuple[float, int]:
+    """Run an external command in isolated subprocesses via /usr/bin/time -l."""
+    timed_cmd = ["/usr/bin/time", "-l", *cmd]
+
+    times: list[float] = []
+    peak_rss = 0
+
+    for _ in range(repeats):
+        result = subprocess.run(timed_cmd, capture_output=True, text=True)
+        stderr = result.stderr
+        if result.returncode != 0:
+            print(f"  {label:40s}  FAILED (exit {result.returncode})")
+            if stderr:
+                print(f"    {stderr.strip()[:200]}")
+            return float("inf"), 0
+
+        m_real = _TIME_RE_REAL.search(stderr)
+        m_rss = _TIME_RE_RSS.search(stderr)
+        if not m_real or not m_rss:
+            print(f"  {label:40s}  FAILED (could not parse /usr/bin/time output)")
+            return float("inf"), 0
+
+        times.append(float(m_real.group(1)))
+        rss = int(m_rss.group(1))
+        peak_rss = max(peak_rss, rss)
+
+    best = min(times)
+    median = sorted(times)[len(times) // 2]
+    delta_rss = max(0, peak_rss - baseline_rss)
+    print(
+        f"  {label:40s}  best={fmt_time(best):>10s}"
+        f"  median={fmt_time(median):>10s}"
+        f"  peak_rss={fmt_mem(delta_rss):>10s}"
+    )
+    return best, delta_rss
+
+
 def measure_baseline_rss(cache_dir: str, files: list[Path]) -> int:
     """Measure RSS of a no-op subprocess (import overhead only)."""
     cmd = [
@@ -343,9 +387,50 @@ def main() -> None:
     run("dbdreader (get all at once)", "dbdreader_multi_filtered_batch")
     print()
 
-    # ── 5. Data verification ─────────────────────────────────────────
+    # ── 5. NetCDF writer — dbd2netCDF vs xdbd 2nc ──────────────────
     print("=" * 78)
-    print("5. Data verification")
+    print(f"5. NetCDF writer — {len(files)} files → NetCDF")
+    print("=" * 78)
+
+    dbd2netcdf_bin = shutil.which("dbd2netCDF")
+    xdbd_bin = shutil.which("xdbd")
+    tmpdir = tempfile.mkdtemp(prefix="bench_nc_")
+    file_args = [str(f) for f in files]
+
+    if dbd2netcdf_bin:
+        cpp_out = str(Path(tmpdir) / "cpp.nc")
+        bench_cmd(
+            "C++ dbd2netCDF",
+            [dbd2netcdf_bin, "-C", cache_dir, "-o", cpp_out] + file_args,
+            n_repeat,
+            baseline_rss,
+        )
+    else:
+        print("  dbd2netCDF not found — skipping")
+
+    if xdbd_bin:
+        py_out = str(Path(tmpdir) / "py.nc")
+        bench_cmd(
+            "xdbd 2nc (streaming)",
+            [xdbd_bin, "2nc", "-C", cache_dir, "-o", py_out] + file_args,
+            n_repeat,
+            baseline_rss,
+        )
+    else:
+        print("  xdbd not found — skipping")
+
+    # Show output file sizes
+    for label, name in [("C++ dbd2netCDF", "cpp.nc"), ("xdbd 2nc", "py.nc")]:
+        p = Path(tmpdir) / name
+        if p.exists():
+            print(f"  {label:40s}  output={p.stat().st_size / 1024 / 1024:.1f} MB")
+
+    shutil.rmtree(tmpdir, ignore_errors=True)
+    print()
+
+    # ── 6. Data verification ─────────────────────────────────────────
+    print("=" * 78)
+    print("6. Data verification")
     print("=" * 78)
 
     import numpy as np

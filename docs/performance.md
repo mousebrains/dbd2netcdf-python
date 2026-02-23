@@ -65,6 +65,23 @@ sensor arrays must coexist in memory.
 For filtered reads (5 sensors), xarray-dbd memory is modest (90 MB)
 because the C++ backend discards non-matching columns early.
 
+## NetCDF Writer: C++ dbd2netCDF vs xdbd 2nc
+
+End-to-end comparison of writing 18 `.dcd` files to a compressed NetCDF
+file. The C++ standalone (`dbd2netCDF`) writes directly; `xdbd 2nc` uses
+the streaming writer (`write_multi_dbd_netcdf`).
+
+| Metric | C++ dbd2netCDF | xdbd 2nc |
+|---|--:|--:|
+| Wall time | **610 ms** | 1.85 s |
+| Peak RSS | **305 MB** | 1,240 MB |
+| Output size | 9.1 MB | 7.5 MB |
+
+`xdbd 2nc` is ~3x slower and uses ~4x more memory than the C++ standalone.
+The Python overhead comes from subprocess startup, import time, and
+holding all sensor columns in memory during the write. The smaller output
+from `xdbd 2nc` is due to different default chunking parameters.
+
 ## Methodology
 
 - **Wall time**: `/usr/bin/time -l` real time, best of 3 isolated
