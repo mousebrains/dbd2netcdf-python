@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/pypi/l/xarray-dbd)](License.txt)
 [![CI](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/ci.yml/badge.svg)](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/codeql.yml/badge.svg)](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/codeql.yml)
-[![Codecov](https://codecov.io/gh/mousebrains/dbd2netcdf-python/branch/main/graph/badge.svg)](https://codecov.io/gh/mousebrains/dbd2netcdf-python)
+[![codecov](https://codecov.io/gh/mousebrains/dbd2netcdf-python/graph/badge.svg?token=EJQEIVEB0U)](https://codecov.io/gh/mousebrains/dbd2netcdf-python)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 An efficient xarray backend for reading Dinkum Binary Data (DBD) files from
