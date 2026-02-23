@@ -1196,3 +1196,54 @@ class TestLazyLoading:
         assert len(mdbd._loaded_eng_params) <= 3
         assert len(mdbd._loaded_eng_params) < len(mdbd.parameterNames["eng"])
         mdbd.close()
+
+    def test_dbd_preload(self):
+        """DBD preload list is loaded on first get() alongside the requested param."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR, preload=["m_pitch", "m_roll"])
+        # Nothing loaded yet
+        assert dbd._loaded_params == set()
+        dbd.get("m_depth")
+        # First get loads requested + preload + time
+        assert {"m_depth", "m_pitch", "m_roll", dbd.timeVariable} <= dbd._loaded_params
+        assert "m_depth" in dbd._columns
+        assert "m_pitch" in dbd._columns
+        assert "m_roll" in dbd._columns
+        dbd.close()
+
+    def test_dbd_preload_consumed_once(self):
+        """DBD preload is consumed on first get(); second get() loads only requested."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR, preload=["m_pitch"])
+        dbd.get("m_depth")
+        params_after_first = set(dbd._loaded_params)
+        dbd.get("m_lat")
+        # Second get should have added m_lat but NOT re-triggered preload
+        assert "m_lat" in dbd._loaded_params
+        assert dbd._loaded_params == params_after_first | {"m_lat"}
+        dbd.close()
+
+    def test_multi_preload(self):
+        """MultiDBD preload list is loaded on first get() alongside the requested param."""
+        mdbd = MultiDBD(
+            filenames=_all_files(), cacheDir=CACHE_DIR,
+            preload=["m_pitch", "m_roll"],
+        )
+        assert mdbd._eng_columns == {}
+        mdbd.get("m_depth")
+        assert "m_depth" in mdbd._eng_columns
+        assert "m_pitch" in mdbd._eng_columns
+        assert "m_roll" in mdbd._eng_columns
+        mdbd.close()
+
+    def test_multi_preload_consumed_once(self):
+        """MultiDBD preload is consumed on first get(); second get() is incremental."""
+        mdbd = MultiDBD(
+            filenames=_all_files(), cacheDir=CACHE_DIR,
+            preload=["m_pitch"],
+        )
+        mdbd.get("m_depth")
+        params_after_first = set(mdbd._loaded_eng_params)
+        mdbd.get("m_lat")
+        # m_lat added, but m_pitch was NOT re-loaded
+        assert "m_lat" in mdbd._loaded_eng_params
+        assert mdbd._loaded_eng_params == params_after_first | {"m_lat"}
+        mdbd.close()

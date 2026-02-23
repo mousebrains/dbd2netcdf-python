@@ -67,11 +67,13 @@ class DBD:
         Sensor-cache directory. Defaults to ``DBDCache.CACHEDIR``.
     skip_initial_line : bool
         If True (default), skip the first data record.
+    preload : list of str or None
+        Sensor names to load alongside the first ``get()`` call.
     """
 
     SKIP_INITIAL_LINE = True
 
-    def __init__(self, filename, cacheDir=None, skip_initial_line=True):  # noqa: N803
+    def __init__(self, filename, cacheDir=None, skip_initial_line=True, preload=None):  # noqa: N803
         self.filename = filename
         self.skip_initial_line = skip_initial_line
 
@@ -104,13 +106,18 @@ class DBD:
         # Lazy state — no columns loaded yet
         self._columns: dict[str, numpy.ndarray] = {}
         self._loaded_params: set[str] = set()
+        self._preload: set[str] = set(preload) if preload else set()
         self._closed = False
 
     # -- lazy loading ------------------------------------------------------------
 
     def _ensure_loaded(self, params):
-        """Load *params* (plus time variable) if not already in memory."""
-        needed = (set(params) | {self.timeVariable}) - self._loaded_params
+        """Load *params* (plus time variable and preload set) if not already in memory."""
+        to_load = set(params) | {self.timeVariable}
+        if self._preload:
+            to_load |= self._preload
+            self._preload = set()
+        needed = to_load - self._loaded_params
         if not needed:
             return
         result = read_dbd_file(
@@ -375,6 +382,8 @@ class MultiDBD:
         Limit files (positive = first N, negative = last N).
     skip_initial_line : bool
         Skip first data record per file.
+    preload : list of str or None
+        Sensor names to load alongside the first ``get()`` call.
     """
 
     def __init__(
@@ -388,8 +397,10 @@ class MultiDBD:
         missions=(),
         max_files=None,
         skip_initial_line=True,
+        preload=None,
     ):
         self._closed = False
+        self._preload: set[str] = set(preload) if preload else set()
         self.banned_missions = list(banned_missions)
         self.missions = list(missions)
         self.skip_initial_line = skip_initial_line
@@ -768,15 +779,20 @@ class MultiDBD:
             self._ensure_loaded(prev_eng | prev_sci)
 
     def _ensure_loaded(self, params):
-        """Load requested params (plus time variables) if not already in memory."""
+        """Load requested params (plus time variables and preload set) if not already in memory."""
         cache = self.cacheDir or ""
         skip = self.skip_initial_line
         eng_names_set = set(self._eng_param_names)
         sci_names_set = set(self._sci_param_names)
 
+        to_load = set(params)
+        if self._preload:
+            to_load |= self._preload
+            self._preload = set()
+
         # Partition requested params into eng/sci
-        eng_requested = {p for p in params if p in eng_names_set}
-        sci_requested = {p for p in params if p in sci_names_set}
+        eng_requested = {p for p in to_load if p in eng_names_set}
+        sci_requested = {p for p in to_load if p in sci_names_set}
 
         # Add time variables
         if eng_requested:
