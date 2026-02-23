@@ -134,8 +134,7 @@ class TestDBD:
         # Load all sensors to find integer ones
         dbd._ensure_loaded(names)
         int_sensors = [
-            n for n in names
-            if n in dbd._columns and dbd._columns[n].dtype in (np.int8, np.int16)
+            n for n in names if n in dbd._columns and dbd._columns[n].dtype in (np.int8, np.int16)
         ]
         if not int_sensors:
             pytest.skip("No integer sensors in test file")
@@ -917,12 +916,14 @@ class TestDBDList:
 
     def test_sort_slocum_filenames(self):
         """Slocum-style filenames sort chronologically via _keyFilename."""
-        fns = DBDList([
-            "unit_123-2024-100-3-43.dbd",
-            "unit_123-2024-100-3-42.dbd",
-            "unit_123-2024-100-4-0.dbd",
-            "unit_123-2024-99-5-10.dbd",
-        ])
+        fns = DBDList(
+            [
+                "unit_123-2024-100-3-43.dbd",
+                "unit_123-2024-100-3-42.dbd",
+                "unit_123-2024-100-4-0.dbd",
+                "unit_123-2024-99-5-10.dbd",
+            ]
+        )
         fns.sort()
         # Day 99 < 100, and within day 100: segment 42 < 43 < segment 4-0
         assert fns[0] == "unit_123-2024-99-5-10.dbd"
@@ -932,10 +933,12 @@ class TestDBDList:
 
     def test_sort_mixed_extensions(self):
         """Slocum ebd and dbd files sort correctly."""
-        fns = DBDList([
-            "unit_1-2024-100-3-42.ebd",
-            "unit_1-2024-100-3-42.dbd",
-        ])
+        fns = DBDList(
+            [
+                "unit_1-2024-100-3-42.ebd",
+                "unit_1-2024-100-3-42.dbd",
+            ]
+        )
         fns.sort()
         # Same numeric key, sort by extension (dbd < ebd)
         assert fns[0].endswith(".dbd")
@@ -1224,7 +1227,8 @@ class TestLazyLoading:
     def test_multi_preload(self):
         """MultiDBD preload list is loaded on first get() alongside the requested param."""
         mdbd = MultiDBD(
-            filenames=_all_files(), cacheDir=CACHE_DIR,
+            filenames=_all_files(),
+            cacheDir=CACHE_DIR,
             preload=["m_pitch", "m_roll"],
         )
         assert mdbd._eng_columns == {}
@@ -1237,7 +1241,8 @@ class TestLazyLoading:
     def test_multi_preload_consumed_once(self):
         """MultiDBD preload is consumed on first get(); second get() is incremental."""
         mdbd = MultiDBD(
-            filenames=_all_files(), cacheDir=CACHE_DIR,
+            filenames=_all_files(),
+            cacheDir=CACHE_DIR,
             preload=["m_pitch"],
         )
         mdbd.get("m_depth")

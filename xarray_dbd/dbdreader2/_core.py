@@ -209,9 +209,7 @@ class DBD:
                         f"Parameters {{{','.join(invalid)}}} are unknown glider sensor "
                         f"names. ({self.filename})"
                     )
-                raise DbdError(
-                    value=DBD_ERROR_NO_VALID_PARAMETERS, mesg=mesg, data=invalid
-                )
+                raise DbdError(value=DBD_ERROR_NO_VALID_PARAMETERS, mesg=mesg, data=invalid)
 
         if self.timeVariable not in self._columns:
             raise DbdError(DBD_ERROR_NO_TIME_VARIABLE)
@@ -219,9 +217,7 @@ class DBD:
         t_all = self._columns[self.timeVariable].astype(numpy.float64)
         results = []
         for p in parameters:
-            t, v = self._extract_param(
-                t_all, p, return_nans, decimalLatLon, discardBadLatLon
-            )
+            t, v = self._extract_param(t_all, p, return_nans, decimalLatLon, discardBadLatLon)
             if max_values_to_read > 0:
                 t = t[:max_values_to_read]
                 v = v[:max_values_to_read]
@@ -278,9 +274,7 @@ class DBD:
         """
         if len(sync_parameters) < 2:
             raise ValueError("Expect at least two parameters.")
-        if len(sync_parameters) == 2 and isinstance(
-            sync_parameters[1], (list, tuple)
-        ):
+        if len(sync_parameters) == 2 and isinstance(sync_parameters[1], (list, tuple)):
             sync_parameters = [sync_parameters[0]] + list(sync_parameters[1])
         return self._get_sync(
             *sync_parameters,
@@ -337,8 +331,7 @@ class DBD:
         self._ensure_loaded(params)
         t_all = self._columns[self.timeVariable].astype(numpy.float64)
         tv_pairs = [
-            self._extract_param(t_all, p, False, decimalLatLon, discardBadLatLon)
-            for p in params
+            self._extract_param(t_all, p, False, decimalLatLon, discardBadLatLon) for p in params
         ]
 
         t_ref = tv_pairs[0][0]
@@ -348,9 +341,7 @@ class DBD:
         r = [t_ref, tv_pairs[0][1]]
         for i, (_t, _v) in enumerate(tv_pairs[1:], 1):
             try:
-                r.append(
-                    numpy.interp(t_ref, _t, _v, left=numpy.nan, right=numpy.nan)
-                )
+                r.append(numpy.interp(t_ref, _t, _v, left=numpy.nan, right=numpy.nan))
             except ValueError:
                 r.append(t_ref * numpy.nan)
                 logger.info("No valid data to interpolate for '%s'.", params[i])
@@ -458,9 +449,7 @@ class MultiDBD:
 
         # Build {filename: open_time_epoch} from scan_headers fileopen_times
         self._file_open_times: dict[str, float] = {}
-        for fn, time_str in zip(
-            hdr_result["filenames"], hdr_result["fileopen_times"], strict=True
-        ):
+        for fn, time_str in zip(hdr_result["filenames"], hdr_result["fileopen_times"], strict=True):
             datestr = time_str.replace("_", " ")
             fmt = "%a %b %d %H:%M:%S %Y"
             with contextlib.suppress(ValueError, OverflowError):
@@ -512,9 +501,7 @@ class MultiDBD:
         self._check_closed()
 
         if include_source:
-            raise NotImplementedError(
-                "include_source is not yet supported in dbdreader2"
-            )
+            raise NotImplementedError("include_source is not yet supported in dbdreader2")
 
         if max_values_to_read > 0 and len(parameters) != 1:
             raise ValueError(
@@ -533,12 +520,8 @@ class MultiDBD:
             if len(invalid) == 1:
                 mesg = f"Parameter {invalid[0]} is an unknown glider sensor name."
             else:
-                mesg = (
-                    f"Parameters {{{','.join(invalid)}}} are unknown glider sensor names."
-                )
-            raise DbdError(
-                value=DBD_ERROR_NO_VALID_PARAMETERS, mesg=mesg, data=invalid
-            )
+                mesg = f"Parameters {{{','.join(invalid)}}} are unknown glider sensor names."
+            raise DbdError(value=DBD_ERROR_NO_VALID_PARAMETERS, mesg=mesg, data=invalid)
 
         results = []
         for p in parameters:
@@ -584,9 +567,7 @@ class MultiDBD:
                 r.append(_t)
                 r.append(_v)
             else:
-                ifun_factory = self._resolve_ifun(
-                    p, interpolating_function_factory
-                )
+                ifun_factory = self._resolve_ifun(p, interpolating_function_factory)
                 if ifun_factory is None:
                     # Use numpy.interp directly
                     try:
@@ -694,10 +675,9 @@ class MultiDBD:
 
     def has_parameter(self, parameter):
         """Return True if *parameter* is available."""
-        return (
-            parameter in self.parameterNames.get("sci", [])
-            or parameter in self.parameterNames.get("eng", [])
-        )
+        return parameter in self.parameterNames.get(
+            "sci", []
+        ) or parameter in self.parameterNames.get("eng", [])
 
     def set_skip_initial_line(self, skip_initial_line):
         """Change skip_initial_line and trigger a re-read."""
@@ -724,10 +704,7 @@ class MultiDBD:
     def isScienceDataFile(cls, fn):  # noqa: N802
         """Return True if *fn* is a science data file (ebd/tbd/nbd/ecd/tcd/ncd)."""
         fn_lower = fn.lower()
-        return any(
-            fn_lower.endswith(ext)
-            for ext in ("ebd", "tbd", "nbd", "ecd", "tcd", "ncd")
-        )
+        return any(fn_lower.endswith(ext) for ext in ("ebd", "tbd", "nbd", "ecd", "tcd", "ncd"))
 
     # -- private helpers ---------------------------------------------------------
 
@@ -809,7 +786,9 @@ class MultiDBD:
 
         if eng_needed and self._eng_files:
             result = read_dbd_files(
-                self._eng_files, cache_dir=cache, to_keep=sorted(eng_needed),
+                self._eng_files,
+                cache_dir=cache,
+                to_keep=sorted(eng_needed),
                 skip_first_record=skip,
             )
             names = result["sensor_names"]
@@ -819,7 +798,9 @@ class MultiDBD:
 
         if sci_needed and self._sci_files:
             result = read_dbd_files(
-                self._sci_files, cache_dir=cache, to_keep=sorted(sci_needed),
+                self._sci_files,
+                cache_dir=cache,
+                to_keep=sorted(sci_needed),
                 skip_first_record=skip,
             )
             names = result["sensor_names"]
@@ -841,9 +822,7 @@ class MultiDBD:
         elif param in self._eng_columns:
             columns = self._eng_columns
         else:
-            return numpy.array([], dtype=numpy.float64), numpy.array(
-                [], dtype=numpy.float64
-            )
+            return numpy.array([], dtype=numpy.float64), numpy.array([], dtype=numpy.float64)
 
         tv_name = self._find_time_var(columns)
         if tv_name is None:
@@ -894,10 +873,7 @@ class MultiDBD:
 
     def _init_time_limits(self):
         """Compute global time range from file open times (no file I/O)."""
-        times = [
-            t for fn in self.filenames
-            if (t := self._file_open_times.get(fn)) is not None
-        ]
+        times = [t for fn in self.filenames if (t := self._file_open_times.get(fn)) is not None]
         if times:
             self.time_limits_dataset = (min(times), max(times))
             self.time_limits = [self.time_limits_dataset[0], self.time_limits_dataset[1]]
@@ -935,8 +911,7 @@ class MultiDBD:
             t_epoch = strptimeToEpoch(timestring, "%d %b %Y %H:%M")
         if not t_epoch:
             raise ValueError(
-                'Could not convert time string. '
-                'Expect a format like "3 Mar" or "3 Mar 12:30".'
+                'Could not convert time string. Expect a format like "3 Mar" or "3 Mar 12:30".'
             )
         return t_epoch
 

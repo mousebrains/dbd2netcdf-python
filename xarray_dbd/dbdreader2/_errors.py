@@ -51,10 +51,7 @@ class DbdError(Exception):
         elif self.value == DBD_ERROR_INVALID_FILE_CRITERION_SPECIFIED:
             mesg = "Invalid or conflicting file selection criterion/criteria specified."
         elif self.value == DBD_ERROR_NO_DATA_TO_INTERPOLATE:
-            mesg = (
-                "One or more parameters that are to be interpolated, "
-                "does/do not have any data."
-            )
+            mesg = "One or more parameters that are to be interpolated, does/do not have any data."
         elif self.value == DBD_ERROR_NO_DATA:
             mesg = "One or more parameters do not have any data."
         else:

@@ -25,11 +25,8 @@ class DBDList(list):
         if match:
             s, extension = os.path.splitext(match.group())
             number_fields = s.split("-")
-            n = sum(
-                int(i) * 10**j
-                for i, j in zip(number_fields[1:], [8, 5, 3, 0], strict=True)
-            )
-            r = f"{key[:match.span()[0]]}-{n}{extension.lower()}"
+            n = sum(int(i) * 10**j for i, j in zip(number_fields[1:], [8, 5, 3, 0], strict=True))
+            r = f"{key[: match.span()[0]]}-{n}{extension.lower()}"
         else:
             r = key.lower()
         return r
@@ -98,9 +95,7 @@ class DBDPatternSelect:
         """
         fns = self.get_filenames(pattern, filenames)
         if not fns:
-            raise DbdError(
-                DBD_ERROR_NO_FILES_FOUND, f"No files matched search pattern {pattern}."
-            )
+            raise DbdError(DBD_ERROR_NO_FILES_FOUND, f"No files matched search pattern {pattern}.")
         if t_start is None:
             t_start = numpy.min(list(self.cache.keys()))
         if t_end is None:
@@ -140,9 +135,7 @@ class DBDPatternSelect:
     def _select(self, all_fns, t0, t1):
         open_times = numpy.array(list(self.cache.keys()))
         open_times = numpy.sort(open_times)
-        selected_times = open_times.compress(
-            numpy.logical_and(open_times >= t0, open_times <= t1)
-        )
+        selected_times = open_times.compress(numpy.logical_and(open_times >= t0, open_times <= t1))
         fns = {self.cache[t] for t in selected_times}.intersection(all_fns)
         fns = DBDList(fns)
         fns.sort()
