@@ -145,55 +145,56 @@ ColumnDataResult read_columns(std::istream& is,
                 qKeep |= sensor.qCriteria();
                 const int oi = outIndex[i];
 
-                // Must read the value regardless of whether we keep it
-                switch (sensor.size()) {
-                    case 1: {
-                        int8_t val = kb.read8(is);
-                        if (oi >= 0) {
+                if (oi < 0) {
+                    // Sensor not kept — skip bytes without deserializing
+                    if (!is.ignore(sensor.size())) {
+                        std::ostringstream oss;
+                        oss << "Error skipping " << sensor.size()
+                            << " bytes for sensor " << sensor.name();
+                        throw MyException(oss.str());
+                    }
+                } else {
+                    switch (sensor.size()) {
+                        case 1: {
+                            int8_t val = kb.read8(is);
                             auto& vec = std::get<std::vector<int8_t>>(columns[oi]);
                             if (nRows >= vec.size()) vec.resize(vec.size() * 2, FILL_INT8);
                             vec[nRows] = val;
                             std::get<std::vector<int8_t>>(prevValues[oi])[0] = val;
+                            break;
                         }
-                        break;
-                    }
-                    case 2: {
-                        int16_t val = kb.read16(is);
-                        if (oi >= 0) {
+                        case 2: {
+                            int16_t val = kb.read16(is);
                             auto& vec = std::get<std::vector<int16_t>>(columns[oi]);
                             if (nRows >= vec.size()) vec.resize(vec.size() * 2, FILL_INT16);
                             vec[nRows] = val;
                             std::get<std::vector<int16_t>>(prevValues[oi])[0] = val;
+                            break;
                         }
-                        break;
-                    }
-                    case 4: {
-                        float val = kb.read32(is);
-                        if (std::isinf(val)) val = NAN;
-                        if (oi >= 0) {
+                        case 4: {
+                            float val = kb.read32(is);
+                            if (std::isinf(val)) val = NAN;
                             auto& vec = std::get<std::vector<float>>(columns[oi]);
                             if (nRows >= vec.size()) vec.resize(vec.size() * 2, NAN);
                             vec[nRows] = val;
                             std::get<std::vector<float>>(prevValues[oi])[0] = val;
+                            break;
                         }
-                        break;
-                    }
-                    case 8: {
-                        double val = kb.read64(is);
-                        if (std::isinf(val)) val = NAN;
-                        if (oi >= 0) {
+                        case 8: {
+                            double val = kb.read64(is);
+                            if (std::isinf(val)) val = NAN;
                             auto& vec = std::get<std::vector<double>>(columns[oi]);
                             if (nRows >= vec.size()) vec.resize(vec.size() * 2, NAN);
                             vec[nRows] = val;
                             std::get<std::vector<double>>(prevValues[oi])[0] = val;
+                            break;
                         }
-                        break;
-                    }
-                    default: {
-                        std::ostringstream oss;
-                        oss << "Unknown sensor size " << sensor.size()
-                            << " for sensor " << sensor.name();
-                        throw MyException(oss.str());
+                        default: {
+                            std::ostringstream oss;
+                            oss << "Unknown sensor size " << sensor.size()
+                                << " for sensor " << sensor.name();
+                            throw MyException(oss.str());
+                        }
                     }
                 }
             }
