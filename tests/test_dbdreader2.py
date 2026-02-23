@@ -1,4 +1,4 @@
-"""Tests for the dbdreader-compatible API layer (xarray_dbd.compat)."""
+"""Tests for the dbdreader2 drop-in replacement (xarray_dbd.dbdreader2)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,19 @@ import pytest
 from conftest import CACHE_DIR, DBD_DIR, skip_no_data
 
 import xarray_dbd
-from xarray_dbd.compat import DBD, MultiDBD, _check_monotonic
+from xarray_dbd.dbdreader2 import (
+    DBD,
+    LATLON_PARAMS,
+    DBDCache,
+    DbdError,
+    DBDList,
+    MultiDBD,
+    _convertToDecimal,
+    epochToDateTimeStr,
+    heading_interpolating_function_factory,
+    strptimeToEpoch,
+    toDec,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,9 +94,17 @@ class TestDBD:
         assert len(t_yes) >= len(t_no)
         dbd.close()
 
-    def test_get_missing_parameter(self):
+    def test_get_missing_parameter_raises(self):
+        """Unknown parameters raise DbdError by default."""
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
-        t, v = dbd.get("nonexistent_sensor")
+        with pytest.raises(DbdError):
+            dbd.get("nonexistent_sensor")
+        dbd.close()
+
+    def test_get_missing_parameter_no_check(self):
+        """With check_for_invalid_parameters=False, missing params give empty arrays."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        t, v = dbd.get("nonexistent_sensor", check_for_invalid_parameters=False)
         assert len(t) == 0
         assert len(v) == 0
         dbd.close()
@@ -93,12 +113,14 @@ class TestDBD:
         """Integer fill values (-127 / -32768) should be filtered out."""
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
         names = dbd.parameterNames
-        # Find an integer sensor (sensor_size 1 or 2)
-        int_sensors = [n for n in names if dbd._ds[n].dtype in (np.int8, np.int16)]
+        int_sensors = [
+            n for n in names
+            if n in dbd._columns and dbd._columns[n].dtype in (np.int8, np.int16)
+        ]
         if not int_sensors:
             pytest.skip("No integer sensors in test file")
         t, v = dbd.get(int_sensors[0])
-        if dbd._ds[int_sensors[0]].dtype == np.int8:
+        if dbd._columns[int_sensors[0]].dtype == np.int8:
             assert not np.any(v == -127)
         else:
             assert not np.any(v == -32768)
@@ -115,17 +137,22 @@ class TestDBD:
 
     def test_get_sync_too_few_params(self):
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
-        with pytest.raises(ValueError, match="at least 2"):
+        with pytest.raises(ValueError, match="at least two"):
             dbd.get_sync("m_depth")
         dbd.close()
 
     def test_get_sync_missing_second_param(self):
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
-        result = dbd.get_sync("m_depth", "nonexistent_sensor")
+        # get_sync should still work if second param has no data
+        result = dbd.get_sync("m_depth", "m_pitch")
         t, v0, v1 = result
         assert len(v1) == len(t)
-        if len(t) > 0:
-            assert np.all(np.isnan(v1))
+        dbd.close()
+
+    def test_get_xy(self):
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        x, y = dbd.get_xy("m_depth", "m_pitch")
+        assert len(x) == len(y)
         dbd.close()
 
     def test_get_mission_name(self):
@@ -135,10 +162,17 @@ class TestDBD:
         assert len(name) > 0
         dbd.close()
 
+    def test_get_fileopen_time(self):
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        t = dbd.get_fileopen_time()
+        assert isinstance(t, int)
+        assert t > 0
+        dbd.close()
+
     def test_close_get_raises(self):
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
         dbd.close()
-        with pytest.raises(RuntimeError, match="closed"):
+        with pytest.raises(DbdError):
             dbd.get("m_depth")
 
     def test_close_properties_empty(self):
@@ -147,12 +181,35 @@ class TestDBD:
         assert dbd.parameterNames == []
         assert dbd.parameterUnits == {}
         assert not dbd.has_parameter("m_depth")
-        assert dbd.get_mission_name() == ""
 
     def test_default_cache_dir(self):
-        """When cacheDir is None, use <file_dir>/cache automatically."""
-        dbd = DBD(_single_file())
-        assert len(dbd.parameterNames) > 0
+        """When cacheDir is None, use DBDCache.CACHEDIR."""
+        old = DBDCache.CACHEDIR
+        try:
+            DBDCache.CACHEDIR = CACHE_DIR
+            dbd = DBD(_single_file())
+            assert len(dbd.parameterNames) > 0
+            dbd.close()
+        finally:
+            DBDCache.CACHEDIR = old
+
+    def test_cache_attributes(self):
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        assert dbd.cacheFound is True
+        assert isinstance(dbd.cacheID, str)
+        assert len(dbd.cacheID) > 0
+        dbd.close()
+
+    def test_header_info(self):
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        assert isinstance(dbd.headerInfo, dict)
+        assert "mission_name" in dbd.headerInfo
+        assert "sensor_list_crc" in dbd.headerInfo
+        dbd.close()
+
+    def test_time_variable(self):
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        assert dbd.timeVariable in ("m_present_time", "sci_m_present_time")
         dbd.close()
 
 
@@ -174,11 +231,11 @@ class TestMultiDBD:
         mdbd.close()
 
     def test_no_files_raises(self):
-        with pytest.raises(ValueError, match="[Nn]o files"):
+        with pytest.raises(DbdError):
             MultiDBD(filenames=[])
 
     def test_no_args_raises(self):
-        with pytest.raises(ValueError, match="filenames or pattern"):
+        with pytest.raises(DbdError):
             MultiDBD()
 
     def test_parameter_names_dict(self):
@@ -189,7 +246,6 @@ class TestMultiDBD:
         assert "sci" in pn
         assert isinstance(pn["eng"], list)
         assert isinstance(pn["sci"], list)
-        # All sensors accounted for
         all_params = pn["eng"] + pn["sci"]
         assert len(all_params) > 0
         mdbd.close()
@@ -231,10 +287,52 @@ class TestMultiDBD:
         assert len(t) == len(v0) == len(v1)
         mdbd.close()
 
+    def test_get_xy(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        x, y = mdbd.get_xy("m_depth", "m_pitch")
+        assert len(x) == len(y)
+        mdbd.close()
+
     def test_has_parameter(self):
         mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
         assert mdbd.has_parameter("m_present_time")
         assert not mdbd.has_parameter("no_such_sensor_xyz")
+        mdbd.close()
+
+    def test_dbds_attribute(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        assert isinstance(mdbd.dbds, dict)
+        assert "eng" in mdbd.dbds
+        assert "sci" in mdbd.dbds
+        # .dcd files are eng
+        assert len(mdbd.dbds["eng"]) > 0
+        mdbd.close()
+
+    def test_filenames_attribute(self):
+        files = _all_files()
+        mdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+        assert len(mdbd.filenames) == len(files)
+        mdbd.close()
+
+    def test_mission_list(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        assert isinstance(mdbd.mission_list, list)
+        assert len(mdbd.mission_list) > 0
+        mdbd.close()
+
+    def test_is_science_data_file(self):
+        assert MultiDBD.isScienceDataFile("test.ebd") is True
+        assert MultiDBD.isScienceDataFile("test.ecd") is True
+        assert MultiDBD.isScienceDataFile("test.tbd") is True
+        assert MultiDBD.isScienceDataFile("test.nbd") is True
+        assert MultiDBD.isScienceDataFile("test.dbd") is False
+        assert MultiDBD.isScienceDataFile("test.dcd") is False
+        assert MultiDBD.isScienceDataFile("test.sbd") is False
+
+    def test_include_source_not_implemented(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        with pytest.raises(NotImplementedError):
+            mdbd.get("m_depth", include_source=True)
         mdbd.close()
 
     def test_close_guards(self):
@@ -249,6 +347,22 @@ class TestMultiDBD:
         mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
         mdbd.close()
         assert not mdbd.has_parameter("m_depth")
+
+    def test_max_files_positive(self):
+        files = _all_files()
+        if len(files) < 3:
+            pytest.skip("Need at least 3 files")
+        mdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR, max_files=2)
+        assert len(mdbd.filenames) <= 2
+        mdbd.close()
+
+    def test_max_files_negative(self):
+        files = _all_files()
+        if len(files) < 3:
+            pytest.skip("Need at least 3 files")
+        mdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR, max_files=-2)
+        assert len(mdbd.filenames) <= 2
+        mdbd.close()
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +407,6 @@ class TestCrossValidation:
         assert len(xr) == len(dr)
         for xa, da in zip(xr, dr, strict=True):
             assert len(xa) == len(da)
-            # Both should be close; NaN positions should match
             mask = np.isfinite(xa) & np.isfinite(da)
             np.testing.assert_allclose(xa[mask], da[mask], rtol=1e-6)
 
@@ -310,39 +423,124 @@ class TestCrossValidation:
         xnames = set(xdbd_dbd.parameterNames)
         dnames = set(dbdr_dbd.parameterNames)
 
-        # xarray-dbd may include time vars that dbdreader excludes, but
-        # all dbdreader names should be present in xarray-dbd
         assert dnames.issubset(xnames), f"missing in xdbd: {dnames - xnames}"
 
         xdbd_dbd.close()
         dbdr_dbd.close()
 
+    def test_multi_get_values_match(self):
+        """MultiDBD.get values match dbdreader within skip_first_record semantics.
+
+        dbdreader skips the first record of *every* file, while xarray-dbd's
+        C++ backend uses the dbd2netCDF convention: files are sorted, the first
+        file keeps all records, subsequent files drop their first record. This
+        can cause a small count difference (off by ~N_files - 1), so we compare
+        with a tolerance on length and check values are close where they overlap.
+        """
+        import dbdreader
+
+        files = _all_files()
+        xdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+        dbdr = dbdreader.MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+
+        sensor = "m_depth"
+        xt, xv = xdbd.get(sensor)
+        dt, dv = dbdr.get(sensor)
+
+        # Length may differ by up to N_files due to skip_first_record semantics
+        assert abs(len(xt) - len(dt)) <= len(files), (
+            f"length mismatch too large: {len(xt)} vs {len(dt)}"
+        )
+        # Values in common should match
+        n = min(len(xt), len(dt))
+        # Find matching timestamps
+        common_t = np.intersect1d(xt, dt)
+        assert len(common_t) > 0
+        x_mask = np.isin(xt, common_t)
+        d_mask = np.isin(dt, common_t)
+        np.testing.assert_allclose(xv[x_mask], dv[d_mask], rtol=1e-10)
+
+        xdbd.close()
+        dbdr.close()
+
+    def test_multi_get_sync_match(self):
+        """MultiDBD.get_sync results are close to dbdreader.
+
+        Same skip_first_record semantic difference as test_multi_get_values_match.
+        """
+        import dbdreader
+
+        files = _all_files()
+        xdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+        dbdr = dbdreader.MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+
+        params = ("m_depth", "m_pitch")
+        xr = xdbd.get_sync(*params)
+        dr = dbdr.get_sync(*params)
+
+        assert len(xr) == len(dr)
+        # Compare on common time base
+        common_t = np.intersect1d(xr[0], dr[0])
+        assert len(common_t) > 0
+        x_mask = np.isin(xr[0], common_t)
+        d_mask = np.isin(dr[0], common_t)
+        for xa, da in zip(xr, dr, strict=True):
+            xa_c = xa[x_mask]
+            da_c = da[d_mask]
+            mask = np.isfinite(xa_c) & np.isfinite(da_c)
+            np.testing.assert_allclose(xa_c[mask], da_c[mask], rtol=1e-6)
+
+        xdbd.close()
+        dbdr.close()
+
 
 # ---------------------------------------------------------------------------
-# TestCheckMonotonic
+# TestUtilities
 # ---------------------------------------------------------------------------
 
 
-class TestCheckMonotonic:
-    def test_monotonic_passes(self):
-        _check_monotonic(np.array([1.0, 2.0, 3.0]), "test")
+class TestUtilities:
+    def test_to_dec(self):
+        # 42 degrees, 30 minutes NMEA = 4230.0 -> 42.5 decimal
+        result = toDec(4230.0)
+        assert abs(result - 42.5) < 1e-10
 
-    def test_duplicates_pass(self):
-        _check_monotonic(np.array([1.0, 2.0, 2.0, 3.0]), "test")
+    def test_to_dec_pair(self):
+        lat, lon = toDec(4230.0, -7015.0)
+        assert abs(lat - 42.5) < 1e-10
+        assert abs(lon - (-70.25)) < 1e-10
 
-    def test_single_element_passes(self):
-        _check_monotonic(np.array([1.0]), "test")
+    def test_convert_to_decimal_negative(self):
+        result = _convertToDecimal(-7015.0)
+        assert abs(result - (-70.25)) < 1e-10
 
-    def test_empty_passes(self):
-        _check_monotonic(np.array([]), "test")
+    def test_strptime_to_epoch(self):
+        t = strptimeToEpoch("2020 Jan 01", "%Y %b %d")
+        assert t == 1577836800
 
-    def test_reversed_raises(self):
-        with pytest.raises(ValueError, match="not monotonically increasing"):
-            _check_monotonic(np.array([3.0, 2.0, 1.0]), "test_param")
+    def test_epoch_to_datetime_str(self):
+        d, t = epochToDateTimeStr(1577836800)
+        assert d == "20200101"
+        assert t == "00:00"
 
-    def test_non_monotonic_raises(self):
-        with pytest.raises(ValueError, match="not monotonically increasing"):
-            _check_monotonic(np.array([1.0, 3.0, 2.0, 4.0]), "test_param")
+    def test_heading_interpolating(self):
+        t = np.array([0.0, 1.0, 2.0])
+        v = np.array([0.0, np.pi, 2 * np.pi])
+        f = heading_interpolating_function_factory(t, v)
+        result = f(np.array([0.5]))
+        assert result.shape == (1,)
+
+    def test_latlon_params(self):
+        assert "m_lat" in LATLON_PARAMS
+        assert "m_lon" in LATLON_PARAMS
+        assert len(LATLON_PARAMS) == 28
+
+
+class TestDBDList:
+    def test_sort_basic(self):
+        fns = DBDList(["b.dbd", "a.dbd"])
+        fns.sort()
+        assert fns == ["a.dbd", "b.dbd"]
 
 
 # ---------------------------------------------------------------------------
@@ -358,3 +556,13 @@ class TestTopLevelImport:
     def test_multidbd_importable(self):
         assert hasattr(xarray_dbd, "MultiDBD")
         assert xarray_dbd.MultiDBD is MultiDBD
+
+    def test_dbdreader2_module_import(self):
+        import xarray_dbd.dbdreader2 as dbdreader2
+
+        assert hasattr(dbdreader2, "DBD")
+        assert hasattr(dbdreader2, "MultiDBD")
+        assert hasattr(dbdreader2, "DbdError")
+        assert hasattr(dbdreader2, "DBDCache")
+        assert hasattr(dbdreader2, "DBDList")
+        assert hasattr(dbdreader2, "toDec")

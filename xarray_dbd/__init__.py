@@ -21,7 +21,7 @@ from .backend import (
     open_multi_dbd_dataset,
     write_multi_dbd_netcdf,
 )
-from .compat import DBD, MultiDBD
+from .dbdreader2 import DBD, MultiDBD
 
 __version__ = version("xarray-dbd")
 __all__ = [
