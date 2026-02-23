@@ -194,7 +194,8 @@ def dbdreader_multi_all():
     except Exception as e:
         print(f"  dbdreader MultiDBD failed: {e}")
         return None
-    params = [p for p in mdbd.parameterNames if p != "m_present_time"]
+    all_params = mdbd.parameterNames["eng"] + mdbd.parameterNames["sci"]
+    params = [p for p in all_params if p != "m_present_time"]
     data = {}
     for p in params:
         try:
@@ -271,9 +272,7 @@ try:
             dbdr_valid = len(v)
         except Exception:
             dbdr_valid = 0
-        print(
-            f"   {sensor:30s}  xarray-dbd valid={xdbd_valid:>8,}  dbdreader={dbdr_valid:>8,}"
-        )
+        print(f"   {sensor:30s}  xarray-dbd valid={xdbd_valid:>8,}  dbdreader={dbdr_valid:>8,}")
     mdbd.close()
 except Exception as e:
     print(f"   dbdreader failed to open files: {e}")

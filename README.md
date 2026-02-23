@@ -142,25 +142,28 @@ Benchmarks comparing xarray-dbd against
 [dbdreader](https://pypi.org/project/dbdreader/) (C extension, CPython API)
 on 18 compressed `.dcd` files (18,054 records, 1,706 sensors):
 
-| Scenario | xarray-dbd | dbdreader | Speedup |
+| Scenario | xarray-dbd | dbdreader | |
 |---|--:|--:|---|
-| Single file, all sensors | **18 ms** / 2.6 MB | 147 ms / 1.1 MB | xarray-dbd 8x faster |
-| Single file, 5 sensors | 3 ms / 0.3 MB | **1 ms** / 0.7 MB | dbdreader 3x faster |
-| 18 files, 5 sensors | **31 ms** / 0.5 MB | 488 ms / 9.4 MB | xarray-dbd 16x faster |
+| Single file, all sensors | **19 ms** | 149 ms | xarray-dbd 8x faster |
+| Single file, 5 sensors | 5 ms | **2 ms** | dbdreader 2.5x faster |
+| 18 files, all sensors | **113 ms** | 212 s | xarray-dbd 1,900x faster |
+| 18 files, 5 sensors | **34 ms** | 502 ms | xarray-dbd 15x faster |
 
 xarray-dbd reads all sensors in a **single pass** per file and returns a
 complete `xr.Dataset`. dbdreader re-reads the file for each sensor via
-`get()`, so its cost scales with the number of requested sensors.
+`get()`, so its cost scales with N_sensors x N_files.
 
-For whole-dataset access xarray-dbd is significantly faster and uses less
-memory because it reads once and fills a pre-allocated array. dbdreader's
-`MultiDBD` loads all file headers upfront (9.4 MB overhead) and each
-`get()` call re-reads the data files. For extracting one or two sensors
-from a single file, dbdreader has less overhead.
+For whole-dataset access xarray-dbd is dramatically faster because it
+reads once and fills a pre-allocated array. For extracting a few sensors
+from a single file, dbdreader is faster due to lower per-sensor overhead
+(it can fseek past unneeded bytes).
 
 On a larger deployment (908 files, 1.26 M records) dbdreader failed with
 a cache-parsing error while xarray-dbd processed the full dataset in
 ~7 s.
+
+See [docs/performance.md](docs/performance.md) for detailed memory
+analysis and methodology.
 
 ## API Reference
 
@@ -192,6 +195,46 @@ Open multiple DBD files as a single concatenated xarray Dataset.
 - `keep_missions` (list of str): Mission names to keep
 
 **Returns:** `xarray.Dataset`
+
+## Migration from dbdreader
+
+xarray-dbd provides drop-in `DBD` and `MultiDBD` classes that mirror the
+[dbdreader](https://pypi.org/project/dbdreader/) API:
+
+```python
+# Before (dbdreader)
+import dbdreader
+dbd = dbdreader.DBD("file.dcd", cacheDir="cache")
+t, depth = dbd.get("m_depth")
+
+mdbd = dbdreader.MultiDBD(filenames=files, cacheDir="cache")
+t, temp, sal = mdbd.get_sync("sci_water_temp", "sci_water_cond")
+
+# After (xarray-dbd) — same API
+import xarray_dbd as xdbd
+dbd = xdbd.DBD("file.dcd", cacheDir="cache")
+t, depth = dbd.get("m_depth")
+
+mdbd = xdbd.MultiDBD(filenames=files, cacheDir="cache")
+t, temp, sal = mdbd.get_sync("sci_water_temp", "sci_water_cond")
+```
+
+| Feature | xarray-dbd compat | dbdreader |
+|---------|-------------------|-----------|
+| `get(*params)` | Yes | Yes |
+| `get_sync(*params)` | Yes (`np.interp`) | Yes (C ext) |
+| `parameterNames` | Yes | Yes |
+| `parameterUnits` | Yes | Yes |
+| `has_parameter()` | Yes | Yes |
+| `get_xy()`, `get_CTD_sync()` | No | Yes |
+| `decimalLatLon` | No (raw floats) | Yes |
+| `include_source` | No | Yes |
+| `set_time_limits()` | No (use `keep_missions`) | Yes |
+
+The compat layer reads all data once on construction (fast single-pass
+C++ reader), so subsequent `get()` calls are instant lookups rather than
+re-reads. For the full xarray API, use `open_dbd_dataset()` /
+`open_multi_dbd_dataset()` directly.
 
 ## Comparison with dbd2netCDF
 
