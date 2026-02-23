@@ -43,8 +43,8 @@ struct HeaderFields {
 struct SingleFileResult {
     std::vector<TypedColumn> columns;
     std::vector<SensorInfo> sensor_info;
-    size_t n_records;
-    size_t start;  // 0 or 1, for skip_first_record slicing
+    size_t n_records = 0;
+    size_t start = 0;  // 0 or 1, for skip_first_record slicing
     HeaderFields header;
     std::string filename;
 };
@@ -52,14 +52,14 @@ struct SingleFileResult {
 struct MultiFileResult {
     std::vector<TypedColumn> columns;
     std::vector<SensorInfo> sensor_info;
-    size_t n_records;
-    size_t n_files;
+    size_t n_records = 0;
+    size_t n_files = 0;
 };
 
 struct SensorListResult {
     std::vector<SensorInfo> sensor_info;
     std::vector<std::string> valid_files;
-    size_t n_files;
+    size_t n_files = 0;
 };
 
 struct FileHeaderInfo {
@@ -127,7 +127,7 @@ SingleFileResult parse_single_file(
     }
 
     KnownBytes kb(is);
-    size_t nBytes = 1024 * 1024;
+    size_t nBytes = size_t{1024} * 1024;
     ColumnDataResult result = read_columns(is, kb, sensors, repair, nBytes);
 
     size_t start = 0;
@@ -150,11 +150,13 @@ SingleFileResult parse_single_file(
 void grow_union_columns(std::vector<TypedColumn>& cols,
                         const std::vector<SensorInfo>& info,
                         size_t new_capacity) {
-    for (size_t i = 0; i < cols.size(); ++i) {
-        std::visit([new_capacity, &info, i](auto& vec) {
+    for (auto& col : cols) {
+        std::visit([new_capacity](auto& vec) {
             using T = typename std::decay_t<decltype(vec)>::value_type;
             size_t old_size = vec.size();
-            if (new_capacity <= old_size) return;
+            if (new_capacity <= old_size) {
+                return;
+            }
             vec.resize(new_capacity);
             // Fill new elements with type-appropriate fill value
             T fill;
@@ -163,7 +165,7 @@ void grow_union_columns(std::vector<TypedColumn>& cols,
             else if constexpr (std::is_same_v<T, float>)    fill = NAN;
             else                                             fill = NAN;
             std::fill(vec.begin() + old_size, vec.end(), fill);
-        }, cols[i]);
+        }, col);
     }
 }
 
