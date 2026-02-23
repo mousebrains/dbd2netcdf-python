@@ -183,7 +183,7 @@ def run(args) -> int:
                         tmp_path, encoding=_nc_encoding(ds_combined, args.compression)
                     )
                     Path(tmp_path).replace(args.output)
-                except Exception:
+                except (OSError, ValueError):
                     Path(tmp_path).unlink(missing_ok=True)
                     raise
             except (OSError, ValueError) as e:

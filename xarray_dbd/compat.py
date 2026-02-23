@@ -70,6 +70,15 @@ def _extract(ds: xr.Dataset, parameter: str, time_var: str, return_nans: bool) -
     return t, v
 
 
+def _check_monotonic(t: np.ndarray, parameter: str) -> None:
+    """Raise ValueError if *t* is not monotonically non-decreasing."""
+    if len(t) > 1 and not np.all(np.diff(t) >= 0):
+        raise ValueError(
+            f"Time values for '{parameter}' are not monotonically increasing; "
+            f"np.interp requires sorted time. This may indicate corrupted data."
+        )
+
+
 class DBD:
     """Read a single DBD file with a dbdreader-compatible interface.
 
@@ -91,6 +100,7 @@ class DBD:
         cacheDir: str | Path | None = None,  # noqa: N803
         skip_initial_line: bool = True,
     ):
+        """Open a single DBD file and load it as an xarray Dataset."""
         self._ds = open_dbd_dataset(
             filename,
             cache_dir=cacheDir,
@@ -187,6 +197,7 @@ class DBD:
             if len(t_p) == 0:
                 result.append(np.full_like(t_ref, np.nan))
             else:
+                _check_monotonic(t_p, p)
                 result.append(np.interp(t_ref, t_p, v_p, left=np.nan, right=np.nan))
 
         return tuple(result)
@@ -233,6 +244,7 @@ class MultiDBD:
         banned_missions: list[str] | None = None,
         skip_initial_line: bool = True,
     ):
+        """Open multiple DBD files and concatenate into a single xarray Dataset."""
         if filenames is not None:
             file_list = [str(f) for f in filenames]
         elif pattern is not None:
@@ -330,6 +342,7 @@ class MultiDBD:
             if len(t_p) == 0:
                 result.append(np.full_like(t_ref, np.nan))
             else:
+                _check_monotonic(t_p, p)
                 result.append(np.interp(t_ref, t_p, v_p, left=np.nan, right=np.nan))
 
         return tuple(result)

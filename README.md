@@ -6,7 +6,6 @@
 [![CI](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/ci.yml/badge.svg)](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/codeql.yml/badge.svg)](https://github.com/mousebrains/dbd2netcdf-python/actions/workflows/codeql.yml)
 [![Codecov](https://codecov.io/gh/mousebrains/dbd2netcdf-python/branch/main/graph/badge.svg)](https://codecov.io/gh/mousebrains/dbd2netcdf-python)
-[![Downloads](https://img.shields.io/pypi/dm/xarray-dbd)](https://pypi.org/project/xarray-dbd/)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 An efficient xarray backend for reading Dinkum Binary Data (DBD) files from
@@ -138,32 +137,8 @@ DBD (Dinkum Binary Data) files are the native format used by Slocum ocean glider
 
 ## Performance
 
-Benchmarks comparing xarray-dbd against
-[dbdreader](https://pypi.org/project/dbdreader/) (C extension, CPython API)
-on 18 compressed `.dcd` files (18,054 records, 1,706 sensors):
-
-| Scenario | xarray-dbd | dbdreader | |
-|---|--:|--:|---|
-| Single file, all sensors | **19 ms** | 149 ms | xarray-dbd 8x faster |
-| Single file, 5 sensors | 5 ms | **2 ms** | dbdreader 2.5x faster |
-| 18 files, all sensors | **113 ms** | 212 s | xarray-dbd 1,900x faster |
-| 18 files, 5 sensors | **34 ms** | 502 ms | xarray-dbd 15x faster |
-
-xarray-dbd reads all sensors in a **single pass** per file and returns a
-complete `xr.Dataset`. dbdreader re-reads the file for each sensor via
-`get()`, so its cost scales with N_sensors x N_files.
-
-For whole-dataset access xarray-dbd is dramatically faster because it
-reads once and fills a pre-allocated array. For extracting a few sensors
-from a single file, dbdreader is faster due to lower per-sensor overhead
-(it can fseek past unneeded bytes).
-
-On a larger deployment (908 files, 1.26 M records) dbdreader failed with
-a cache-parsing error while xarray-dbd processed the full dataset in
-~7 s.
-
-See [docs/performance.md](docs/performance.md) for detailed memory
-analysis and methodology.
+See [docs/performance.md](docs/performance.md) for benchmarks, memory
+analysis, and methodology.
 
 ## API Reference
 

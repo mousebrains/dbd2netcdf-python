@@ -7,7 +7,7 @@ import pytest
 from conftest import CACHE_DIR, DBD_DIR, skip_no_data
 
 import xarray_dbd
-from xarray_dbd.compat import DBD, MultiDBD
+from xarray_dbd.compat import DBD, MultiDBD, _check_monotonic
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -316,6 +316,33 @@ class TestCrossValidation:
 
         xdbd_dbd.close()
         dbdr_dbd.close()
+
+
+# ---------------------------------------------------------------------------
+# TestCheckMonotonic
+# ---------------------------------------------------------------------------
+
+
+class TestCheckMonotonic:
+    def test_monotonic_passes(self):
+        _check_monotonic(np.array([1.0, 2.0, 3.0]), "test")
+
+    def test_duplicates_pass(self):
+        _check_monotonic(np.array([1.0, 2.0, 2.0, 3.0]), "test")
+
+    def test_single_element_passes(self):
+        _check_monotonic(np.array([1.0]), "test")
+
+    def test_empty_passes(self):
+        _check_monotonic(np.array([]), "test")
+
+    def test_reversed_raises(self):
+        with pytest.raises(ValueError, match="not monotonically increasing"):
+            _check_monotonic(np.array([3.0, 2.0, 1.0]), "test_param")
+
+    def test_non_monotonic_raises(self):
+        with pytest.raises(ValueError, match="not monotonically increasing"):
+            _check_monotonic(np.array([1.0, 3.0, 2.0, 4.0]), "test_param")
 
 
 # ---------------------------------------------------------------------------

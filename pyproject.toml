@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "xarray-dbd"
-version = "0.2.0"
+version = "0.2.1"
 description = "Efficient xarray backend for reading glider DBD files"
 readme = "README.md"
 requires-python = ">=3.10"

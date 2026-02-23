@@ -87,8 +87,6 @@ mapping and change-tracking process.
 
 ## Known Limitations
 
-- **Python 3.13+ required** — uses modern Python features and typing
-- **Free-threaded Python (3.13t)**: pybind11 does not yet fully support `Py_GIL_DISABLED`;
-  the extension segfaults under free-threaded builds
+- **Python 3.10+ required** — uses modern Python features and typing
 - No lazy/chunked loading — entire file is read into memory
 - No direct timestamp parsing — users must handle `m_present_time` conversion

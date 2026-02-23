@@ -54,6 +54,7 @@ class DBDDataStore:
         criteria: list[str] | None = None,
         cache_dir: str | Path | None = None,
     ):
+        """Parse a single DBD file via the C++ backend."""
         self.filename = Path(filename)
 
         # Determine cache directory
@@ -94,7 +95,7 @@ class DBDDataStore:
         self._header = dict(result["header"])
 
     def get_variables(self) -> dict[str, xr.Variable]:
-        """Get xarray variables for all sensors"""
+        """Return a dict of sensor name to xarray Variable."""
         variables: dict[str, xr.Variable] = {}
         dims = ("i",)
 
@@ -109,7 +110,7 @@ class DBDDataStore:
         return variables
 
     def get_attrs(self) -> dict[str, Any]:
-        """Get global attributes"""
+        """Return global attributes from the DBD header."""
         return {
             "mission_name": self._header.get("mission_name", ""),
             "fileopen_time": self._header.get("fileopen_time", ""),
@@ -120,7 +121,7 @@ class DBDDataStore:
         }
 
     def get_dimensions(self) -> dict[str, int]:
-        """Get dimensions"""
+        """Return dimension sizes (i=records, j=1)."""
         return {"i": self._n_records, "j": 1}
 
 

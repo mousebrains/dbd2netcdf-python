@@ -157,3 +157,9 @@ cache/
 *.mcd
 *.nbd
 *.ncd
+
+# Test data — track despite global ignores
+!dbd_files/
+!dbd_files/**
+!dbd_files/cache/
+!dbd_files/cache/**

@@ -5,7 +5,7 @@ workflow for xarray-dbd.
 
 ## Development Setup
 
-**Prerequisites:** Python 3.13+, a C++17 compiler, and CMake ≥ 3.15.
+**Prerequisites:** Python 3.10+, a C++17 compiler, and CMake ≥ 3.15.
 
 ```bash
 git clone https://github.com/mousebrains/dbd2netcdf-python
