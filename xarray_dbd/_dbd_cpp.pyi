@@ -24,9 +24,12 @@ class _ScanResult(TypedDict):
     sensor_units: list[str]
     sensor_sizes: list[int]
     valid_files: list[str]
+    n_files: int
 
 class _HeaderResult(TypedDict):
     valid_files: list[str]
+    mission_names: list[str]
+    sensor_list_crcs: list[str]
 
 def read_dbd_file(
     filename: str,

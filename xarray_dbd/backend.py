@@ -352,12 +352,12 @@ def open_multi_dbd_dataset(
         attrs = {"units": sensor_units[idx]}
         data_vars[name] = xr.Variable(dims, columns[idx], attrs=attrs)
 
-    attrs = {
+    ds_attrs: dict[str, Any] = {
         "n_files": n_files,
         "total_records": n_records,
     }
 
-    ds = xr.Dataset(data_vars, attrs=attrs)
+    ds = xr.Dataset(data_vars, attrs=ds_attrs)
 
     return ds
 
