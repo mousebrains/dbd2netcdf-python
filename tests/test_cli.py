@@ -37,9 +37,15 @@ class TestMkLogger:
         from xarray_dbd.cli.logger import mk_logger
 
         args = Namespace(
-            logfile=None, log_bytes=10000000, log_count=3,
-            debug=False, verbose=False, mail_to=None, mail_from=None,
-            mail_subject=None, smtp_host="localhost",
+            logfile=None,
+            log_bytes=10000000,
+            log_count=3,
+            debug=False,
+            verbose=False,
+            mail_to=None,
+            mail_from=None,
+            mail_subject=None,
+            smtp_host="localhost",
         )
         lg = mk_logger(args, name="test_default", log_level="WARNING")
         assert lg.level == logging.WARNING
@@ -51,9 +57,15 @@ class TestMkLogger:
         from xarray_dbd.cli.logger import mk_logger
 
         args = Namespace(
-            logfile=None, log_bytes=10000000, log_count=3,
-            debug=True, verbose=False, mail_to=None, mail_from=None,
-            mail_subject=None, smtp_host="localhost",
+            logfile=None,
+            log_bytes=10000000,
+            log_count=3,
+            debug=True,
+            verbose=False,
+            mail_to=None,
+            mail_from=None,
+            mail_subject=None,
+            smtp_host="localhost",
         )
         lg = mk_logger(args, name="test_debug")
         assert lg.level == logging.DEBUG
@@ -63,9 +75,15 @@ class TestMkLogger:
         from xarray_dbd.cli.logger import mk_logger
 
         args = Namespace(
-            logfile=None, log_bytes=10000000, log_count=3,
-            debug=False, verbose=True, mail_to=None, mail_from=None,
-            mail_subject=None, smtp_host="localhost",
+            logfile=None,
+            log_bytes=10000000,
+            log_count=3,
+            debug=False,
+            verbose=True,
+            mail_to=None,
+            mail_from=None,
+            mail_subject=None,
+            smtp_host="localhost",
         )
         lg = mk_logger(args, name="test_verbose")
         assert lg.level == logging.INFO
@@ -76,9 +94,15 @@ class TestMkLogger:
 
         logfile = str(tmp_path / "test.log")
         args = Namespace(
-            logfile=logfile, log_bytes=10000000, log_count=3,
-            debug=False, verbose=False, mail_to=None, mail_from=None,
-            mail_subject=None, smtp_host="localhost",
+            logfile=logfile,
+            log_bytes=10000000,
+            log_count=3,
+            debug=False,
+            verbose=False,
+            mail_to=None,
+            mail_from=None,
+            mail_subject=None,
+            smtp_host="localhost",
         )
         lg = mk_logger(args, name="test_logfile")
         assert len(lg.handlers) == 1
@@ -178,10 +202,17 @@ def test_dbd2nc_single_file():
     try:
         result = subprocess.run(
             [
-                sys.executable, "-m", "xarray_dbd.cli.dbd2nc",
-                "-C", CACHE_DIR, "-o", tmpname, str(dcd_files[0]),
+                sys.executable,
+                "-m",
+                "xarray_dbd.cli.dbd2nc",
+                "-C",
+                CACHE_DIR,
+                "-o",
+                tmpname,
+                str(dcd_files[0]),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"dbd2nc failed: {result.stderr}"
         ds = xr.open_dataset(tmpname, decode_timedelta=False)
@@ -208,11 +239,18 @@ def test_dbd2nc_skip_first():
         for out, extra in [(out_skip, ["--skip-first"]), (out_noskip, [])]:
             result = subprocess.run(
                 [
-                    sys.executable, "-m", "xarray_dbd.cli.dbd2nc",
-                    "-C", CACHE_DIR, "-o", str(out), *extra,
+                    sys.executable,
+                    "-m",
+                    "xarray_dbd.cli.dbd2nc",
+                    "-C",
+                    CACHE_DIR,
+                    "-o",
+                    str(out),
+                    *extra,
                     *[str(f) for f in dcd_files],
                 ],
-                capture_output=True, text=True,
+                capture_output=True,
+                text=True,
             )
             assert result.returncode == 0, f"dbd2nc failed: {result.stderr}"
 
@@ -238,11 +276,19 @@ def test_dbd2nc_no_compression():
     try:
         result = subprocess.run(
             [
-                sys.executable, "-m", "xarray_dbd.cli.dbd2nc",
-                "-C", CACHE_DIR, "-o", tmpname, "--compression", "0",
+                sys.executable,
+                "-m",
+                "xarray_dbd.cli.dbd2nc",
+                "-C",
+                CACHE_DIR,
+                "-o",
+                tmpname,
+                "--compression",
+                "0",
                 str(dcd_files[0]),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"dbd2nc failed: {result.stderr}"
         ds = xr.open_dataset(tmpname, decode_timedelta=False)
@@ -268,11 +314,19 @@ def test_dbd2nc_sensor_filter():
 
         result = subprocess.run(
             [
-                sys.executable, "-m", "xarray_dbd.cli.dbd2nc",
-                "-C", CACHE_DIR, "-o", str(outfile),
-                "-k", str(sensor_file), str(dcd_files[0]),
+                sys.executable,
+                "-m",
+                "xarray_dbd.cli.dbd2nc",
+                "-C",
+                CACHE_DIR,
+                "-o",
+                str(outfile),
+                "-k",
+                str(sensor_file),
+                str(dcd_files[0]),
             ],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         assert result.returncode == 0, f"dbd2nc failed: {result.stderr}"
         ds = xr.open_dataset(str(outfile), decode_timedelta=False)
@@ -285,18 +339,21 @@ class TestReadSensorList:
 
     def test_basic(self, tmp_path):
         from xarray_dbd.cli.dbd2nc import read_sensor_list
+
         p = tmp_path / "sensors.txt"
         p.write_text("sensor_a\nsensor_b\n", encoding="utf-8")
         assert read_sensor_list(p) == ["sensor_a", "sensor_b"]
 
     def test_comments_and_blanks(self, tmp_path):
         from xarray_dbd.cli.dbd2nc import read_sensor_list
+
         p = tmp_path / "sensors.txt"
         p.write_text("sensor_a # comment\n\n# full comment\nsensor_b\n", encoding="utf-8")
         assert read_sensor_list(p) == ["sensor_a", "sensor_b"]
 
     def test_csv_format(self, tmp_path):
         from xarray_dbd.cli.dbd2nc import read_sensor_list
+
         p = tmp_path / "sensors.txt"
         p.write_text("sensor_a, sensor_b, sensor_c\n", encoding="utf-8")
         assert read_sensor_list(p) == ["sensor_a", "sensor_b", "sensor_c"]
@@ -346,10 +403,15 @@ def test_sensors_output_format():
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "xarray_dbd.cli.sensors",
-            "-C", CACHE_DIR, str(dcd_files[0]),
+            sys.executable,
+            "-m",
+            "xarray_dbd.cli.sensors",
+            "-C",
+            CACHE_DIR,
+            str(dcd_files[0]),
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0
     lines = result.stdout.strip().split("\n")
@@ -370,10 +432,17 @@ def test_sensors_to_file(tmp_path):
     outfile = tmp_path / "sensors.txt"
     result = subprocess.run(
         [
-            sys.executable, "-m", "xarray_dbd.cli.sensors",
-            "-C", CACHE_DIR, "-o", str(outfile), str(dcd_files[0]),
+            sys.executable,
+            "-m",
+            "xarray_dbd.cli.sensors",
+            "-C",
+            CACHE_DIR,
+            "-o",
+            str(outfile),
+            str(dcd_files[0]),
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0
     content = outfile.read_text(encoding="utf-8")
@@ -394,16 +463,21 @@ def test_missions_help():
 @pytest.mark.skipif(not has_test_data, reason="Test data not available")
 def test_missions_output():
     """missions output lines match 'count mission_name' format with nonzero counts."""
-    dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:5]
-    if not dbd_files:
-        pytest.skip("No .dbd files available")
+    dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:5]
+    if not dcd_files:
+        pytest.skip("No .dcd files available")
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "xarray_dbd.cli.missions",
-            *[str(f) for f in dbd_files],
+            sys.executable,
+            "-m",
+            "xarray_dbd.cli.missions",
+            "-C",
+            CACHE_DIR,
+            *[str(f) for f in dcd_files],
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0
     lines = result.stdout.strip().split("\n")
@@ -418,17 +492,24 @@ def test_missions_output():
 @pytest.mark.skipif(not has_test_data, reason="Test data not available")
 def test_missions_to_file(tmp_path):
     """-o FILE writes missions list to file."""
-    dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:5]
-    if not dbd_files:
-        pytest.skip("No .dbd files available")
+    dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:5]
+    if not dcd_files:
+        pytest.skip("No .dcd files available")
 
     outfile = tmp_path / "missions.txt"
     result = subprocess.run(
         [
-            sys.executable, "-m", "xarray_dbd.cli.missions",
-            "-o", str(outfile), *[str(f) for f in dbd_files],
+            sys.executable,
+            "-m",
+            "xarray_dbd.cli.missions",
+            "-C",
+            CACHE_DIR,
+            "-o",
+            str(outfile),
+            *[str(f) for f in dcd_files],
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0
     content = outfile.read_text(encoding="utf-8")
@@ -449,16 +530,21 @@ def test_cache_help():
 @pytest.mark.skipif(not has_test_data, reason="Test data not available")
 def test_cache_output():
     """cache output lines match 'count hex_crc' format."""
-    dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:5]
-    if not dbd_files:
-        pytest.skip("No .dbd files available")
+    dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:5]
+    if not dcd_files:
+        pytest.skip("No .dcd files available")
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "xarray_dbd.cli.cache",
-            *[str(f) for f in dbd_files],
+            sys.executable,
+            "-m",
+            "xarray_dbd.cli.cache",
+            "-C",
+            CACHE_DIR,
+            *[str(f) for f in dcd_files],
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0
     lines = result.stdout.strip().split("\n")
@@ -474,16 +560,20 @@ def test_cache_output():
 @pytest.mark.skipif(not has_test_data, reason="Test data not available")
 def test_cache_missing_no_cache_dir():
     """cache --missing without -C errors."""
-    dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:1]
-    if not dbd_files:
-        pytest.skip("No .dbd files available")
+    dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+    if not dcd_files:
+        pytest.skip("No .dcd files available")
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "xarray_dbd.cli.cache",
-            "--missing", str(dbd_files[0]),
+            sys.executable,
+            "-m",
+            "xarray_dbd.cli.cache",
+            "--missing",
+            str(dcd_files[0]),
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode != 0
 
@@ -493,25 +583,30 @@ class TestCacheFileExists:
 
     def test_existing_cac(self, tmp_path):
         from xarray_dbd.cli.cache import _cache_file_exists
+
         (tmp_path / "abcdef12.cac").write_text("data", encoding="utf-8")
         assert _cache_file_exists(tmp_path, "abcdef12") is True
 
     def test_existing_ccc(self, tmp_path):
         from xarray_dbd.cli.cache import _cache_file_exists
+
         (tmp_path / "abcdef12.ccc").write_text("data", encoding="utf-8")
         assert _cache_file_exists(tmp_path, "abcdef12") is True
 
     def test_bare_crc(self, tmp_path):
         from xarray_dbd.cli.cache import _cache_file_exists
+
         (tmp_path / "abcdef12").write_text("data", encoding="utf-8")
         assert _cache_file_exists(tmp_path, "abcdef12") is True
 
     def test_missing(self, tmp_path):
         from xarray_dbd.cli.cache import _cache_file_exists
+
         assert _cache_file_exists(tmp_path, "abcdef12") is False
 
     def test_nonexistent_dir(self, tmp_path):
         from xarray_dbd.cli.cache import _cache_file_exists
+
         assert _cache_file_exists(tmp_path / "nope", "abcdef12") is False
 
 
@@ -567,10 +662,15 @@ def test_2csv_stdout():
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "xarray_dbd.cli.csv",
-            "-C", CACHE_DIR, str(dcd_files[0]),
+            sys.executable,
+            "-m",
+            "xarray_dbd.cli.csv",
+            "-C",
+            CACHE_DIR,
+            str(dcd_files[0]),
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, f"2csv failed: {result.stderr}"
     lines = result.stdout.strip().split("\n")
@@ -589,10 +689,17 @@ def test_2csv_to_file(tmp_path):
     outfile = tmp_path / "output.csv"
     result = subprocess.run(
         [
-            sys.executable, "-m", "xarray_dbd.cli.csv",
-            "-C", CACHE_DIR, "-o", str(outfile), str(dcd_files[0]),
+            sys.executable,
+            "-m",
+            "xarray_dbd.cli.csv",
+            "-C",
+            CACHE_DIR,
+            "-o",
+            str(outfile),
+            str(dcd_files[0]),
         ],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     assert result.returncode == 0, f"2csv failed: {result.stderr}"
     content = outfile.read_text(encoding="utf-8")
@@ -647,28 +754,6 @@ def test_mkone_empty_dir():
 
 
 @pytest.mark.skipif(not has_test_data, reason="Test data not available")
-def test_mkone_dbd_files():
-    """mkone processes .dbd files (unfactored, no cache needed) into dbd.nc."""
-    dbd_files = sorted(DBD_DIR.glob("*.dbd"))
-    if not dbd_files:
-        pytest.skip("No .dbd files available")
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        outprefix = str(Path(tmpdir) / "test.")
-        result = subprocess.run(
-            [
-                sys.executable, "-m", "xarray_dbd.cli.mkone",
-                "--output-prefix", outprefix,
-                "--cache", CACHE_DIR,
-                *[str(f) for f in dbd_files[:3]],
-            ],
-            capture_output=True, text=True, timeout=120,
-        )
-        assert result.returncode == 0, f"mkone failed: {result.stderr}"
-        assert Path(outprefix + "dbd.nc").exists(), "dbd.nc not created"
-
-
-@pytest.mark.skipif(not has_test_data, reason="Test data not available")
 def test_mkone_dcd_files():
     """mkone processes .dcd files into dbd.nc."""
     dcd_files = sorted(DBD_DIR.glob("*.dcd"))
@@ -679,12 +764,18 @@ def test_mkone_dcd_files():
         outprefix = str(Path(tmpdir) / "test.")
         result = subprocess.run(
             [
-                sys.executable, "-m", "xarray_dbd.cli.mkone",
-                "--output-prefix", outprefix,
-                "--cache", CACHE_DIR,
+                sys.executable,
+                "-m",
+                "xarray_dbd.cli.mkone",
+                "--output-prefix",
+                outprefix,
+                "--cache",
+                CACHE_DIR,
                 *[str(f) for f in dcd_files[:3]],
             ],
-            capture_output=True, text=True, timeout=120,
+            capture_output=True,
+            text=True,
+            timeout=120,
         )
         assert result.returncode == 0, f"mkone failed: {result.stderr}"
         assert Path(outprefix + "dbd.nc").exists(), "dbd.nc not created"
@@ -769,12 +860,19 @@ def test_xdbd_version():
 # In-process CLI run() tests — captured by coverage
 # =============================================================================
 
+
 def _base_args(**overrides) -> Namespace:
     """Build a Namespace with common logger defaults."""
     defaults = {
-        "logfile": None, "log_bytes": 10000000, "log_count": 3,
-        "debug": False, "verbose": False, "mail_to": None, "mail_from": None,
-        "mail_subject": None, "smtp_host": "localhost",
+        "logfile": None,
+        "log_bytes": 10000000,
+        "log_count": 3,
+        "debug": False,
+        "verbose": False,
+        "mail_to": None,
+        "mail_from": None,
+        "mail_subject": None,
+        "smtp_host": "localhost",
     }
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -789,8 +887,11 @@ class TestSensorsRun:
 
         dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
         args = _base_args(
-            files=dcd_files, cache=CACHE_DIR, output=None,
-            skip_mission=[], keep_mission=[],
+            files=dcd_files,
+            cache=CACHE_DIR,
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
         )
         rc = run(args)
         assert rc == 0
@@ -805,8 +906,11 @@ class TestSensorsRun:
         dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
         outfile = tmp_path / "sensors.txt"
         args = _base_args(
-            files=dcd_files, cache=CACHE_DIR, output=outfile,
-            skip_mission=[], keep_mission=[],
+            files=dcd_files,
+            cache=CACHE_DIR,
+            output=outfile,
+            skip_mission=[],
+            keep_mission=[],
         )
         rc = run(args)
         assert rc == 0
@@ -816,8 +920,11 @@ class TestSensorsRun:
         from xarray_dbd.cli.sensors import run
 
         args = _base_args(
-            files=[Path("/nonexistent/fake.dbd")], cache="", output=None,
-            skip_mission=[], keep_mission=[],
+            files=[Path("/nonexistent/fake.dbd")],
+            cache="",
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
         )
         rc = run(args)
         assert rc == 1
@@ -830,10 +937,13 @@ class TestMissionsRun:
     def test_missions_run_stdout(self, capsys):
         from xarray_dbd.cli.missions import run
 
-        dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:3]
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
         args = _base_args(
-            files=dbd_files, cache="", output=None,
-            skip_mission=[], keep_mission=[],
+            files=dcd_files,
+            cache=CACHE_DIR,
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
         )
         rc = run(args)
         assert rc == 0
@@ -846,11 +956,14 @@ class TestMissionsRun:
     def test_missions_run_to_file(self, tmp_path):
         from xarray_dbd.cli.missions import run
 
-        dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:3]
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
         outfile = tmp_path / "missions.txt"
         args = _base_args(
-            files=dbd_files, cache="", output=outfile,
-            skip_mission=[], keep_mission=[],
+            files=dcd_files,
+            cache=CACHE_DIR,
+            output=outfile,
+            skip_mission=[],
+            keep_mission=[],
         )
         rc = run(args)
         assert rc == 0
@@ -864,10 +977,14 @@ class TestCacheRun:
     def test_cache_run_stdout(self, capsys):
         from xarray_dbd.cli.cache import run
 
-        dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:3]
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
         args = _base_args(
-            files=dbd_files, cache="", output=None,
-            skip_mission=[], keep_mission=[], missing=False,
+            files=dcd_files,
+            cache=CACHE_DIR,
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
+            missing=False,
         )
         rc = run(args)
         assert rc == 0
@@ -878,10 +995,14 @@ class TestCacheRun:
     def test_cache_run_missing_needs_cache_dir(self):
         from xarray_dbd.cli.cache import run
 
-        dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:1]
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
         args = _base_args(
-            files=dbd_files, cache="", output=None,
-            skip_mission=[], keep_mission=[], missing=True,
+            files=dcd_files,
+            cache="",
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
+            missing=True,
         )
         rc = run(args)
         assert rc == 1
@@ -889,10 +1010,14 @@ class TestCacheRun:
     def test_cache_run_missing_with_cache_dir(self, capsys):
         from xarray_dbd.cli.cache import run
 
-        dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:1]
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
         args = _base_args(
-            files=dbd_files, cache=CACHE_DIR, output=None,
-            skip_mission=[], keep_mission=[], missing=True,
+            files=dcd_files,
+            cache=CACHE_DIR,
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
+            missing=True,
         )
         rc = run(args)
         assert rc == 0
@@ -910,10 +1035,17 @@ class TestDbd2ncRun:
         dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:2]
         outfile = tmp_path / "out.nc"
         args = _base_args(
-            files=dcd_files, cache=Path(CACHE_DIR), output=outfile,
-            append=False, sensors=None, sensor_output=None,
-            skip_mission=None, keep_mission=None,
-            skip_first=True, repair=False, compression=5,
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=True,
+            repair=False,
+            compression=5,
         )
         rc = run(args)
         assert rc == 0
@@ -927,10 +1059,17 @@ class TestDbd2ncRun:
         dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
         outfile = tmp_path / "out.nc"
         args = _base_args(
-            files=dcd_files, cache=Path(CACHE_DIR), output=outfile,
-            append=False, sensors=None, sensor_output=None,
-            skip_mission=None, keep_mission=None,
-            skip_first=False, repair=False, compression=0,
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=0,
         )
         rc = run(args)
         assert rc == 0
@@ -940,10 +1079,17 @@ class TestDbd2ncRun:
 
         outfile = tmp_path / "out.nc"
         args = _base_args(
-            files=[Path("/nonexistent/fake.dbd")], cache=None, output=outfile,
-            append=False, sensors=None, sensor_output=None,
-            skip_mission=None, keep_mission=None,
-            skip_first=False, repair=False, compression=5,
+            files=[Path("/nonexistent/fake.dbd")],
+            cache=None,
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=5,
         )
         rc = run(args)
         assert rc == 1
@@ -958,10 +1104,17 @@ class TestDbd2ncRun:
         sensor_file.write_text("m_present_time\n", encoding="utf-8")
         outfile = tmp_path / "out.nc"
         args = _base_args(
-            files=dcd_files, cache=Path(CACHE_DIR), output=outfile,
-            append=False, sensors=None, sensor_output=sensor_file,
-            skip_mission=None, keep_mission=None,
-            skip_first=False, repair=False, compression=5,
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=sensor_file,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=5,
         )
         rc = run(args)
         assert rc == 0
@@ -979,10 +1132,15 @@ class TestCsvRun:
 
         dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
         args = _base_args(
-            files=dcd_files, cache=Path(CACHE_DIR), output=None,
-            sensors=None, sensor_output=None,
-            skip_mission=None, keep_mission=None,
-            skip_first=False, repair=False,
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=None,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
         )
         rc = run(args)
         assert rc == 0
@@ -996,10 +1154,15 @@ class TestCsvRun:
         dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
         outfile = tmp_path / "out.csv"
         args = _base_args(
-            files=dcd_files, cache=Path(CACHE_DIR), output=outfile,
-            sensors=None, sensor_output=None,
-            skip_mission=None, keep_mission=None,
-            skip_first=False, repair=False,
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
         )
         rc = run(args)
         assert rc == 0

@@ -130,8 +130,20 @@ class TestGuessCanOpen:
         from xarray_dbd.backend import DBDBackendEntrypoint
 
         ep = DBDBackendEntrypoint()
-        for ext in [".dbd", ".ebd", ".sbd", ".tbd", ".mbd", ".nbd",
-                     ".dcd", ".ecd", ".scd", ".tcd", ".mcd", ".ncd"]:
+        for ext in [
+            ".dbd",
+            ".ebd",
+            ".sbd",
+            ".tbd",
+            ".mbd",
+            ".nbd",
+            ".dcd",
+            ".ecd",
+            ".scd",
+            ".tcd",
+            ".mcd",
+            ".ncd",
+        ]:
             assert ep.guess_can_open(f"/tmp/file{ext}") is True
 
     def test_invalid_extensions(self):
