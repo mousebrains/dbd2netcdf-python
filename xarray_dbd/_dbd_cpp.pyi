@@ -27,9 +27,10 @@ class _ScanResult(TypedDict):
     n_files: int
 
 class _HeaderResult(TypedDict):
-    valid_files: list[str]
+    filenames: list[str]
     mission_names: list[str]
     sensor_list_crcs: list[str]
+    fileopen_times: list[str]
 
 def read_dbd_file(
     filename: str,

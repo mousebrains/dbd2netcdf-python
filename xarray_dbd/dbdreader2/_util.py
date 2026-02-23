@@ -49,7 +49,7 @@ def strptimeToEpoch(datestr, fmt):  # noqa: N802
 
 def epochToDateTimeStr(seconds, dateformat="%Y%m%d", timeformat="%H:%M"):  # noqa: N802
     """Convert seconds since epoch to (datestr, timestr) tuple."""
-    d = datetime.datetime.utcfromtimestamp(seconds)
+    d = datetime.datetime.fromtimestamp(seconds, datetime.UTC)
     return d.strftime(dateformat), d.strftime(timeformat)
 
 

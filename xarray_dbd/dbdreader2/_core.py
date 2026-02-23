@@ -87,7 +87,7 @@ class DBD:
         )
 
         self.headerInfo = result["header"]
-        self.cacheFound = True
+        self.cacheFound = bool(self.cacheDir and os.path.isdir(self.cacheDir))
         self.cacheID = self.headerInfo.get("sensor_list_crc", "").lower()
 
         names = result["sensor_names"]
@@ -150,6 +150,9 @@ class DBD:
         check_for_invalid_parameters : bool
             Raise on unknown sensor names.
         """
+        if not self._columns:
+            raise DbdError(DBD_ERROR_NO_TIME_VARIABLE, "DBD object is closed")
+
         if max_values_to_read > 0 and len(parameters) != 1:
             raise ValueError(
                 "Limiting the values to be read for multiple parameters "
@@ -297,6 +300,8 @@ class DBD:
 
     def _get_sync(self, *params, decimalLatLon=True, discardBadLatLon=True):  # noqa: N803
         """Internal sync implementation."""
+        if not self._columns:
+            raise DbdError(DBD_ERROR_NO_TIME_VARIABLE, "DBD object is closed")
         t_all = self._columns[self.timeVariable].astype(numpy.float64)
         tv_pairs = [
             self._extract_param(t_all, p, False, decimalLatLon, discardBadLatLon)
@@ -401,7 +406,7 @@ class MultiDBD:
         if complemented_files_only:
             self._prune_unmatched(fns)
 
-        # Use scan_headers for mission filtering
+        # Use scan_headers for mission filtering + fileopen_times
         hdr_result = scan_headers(
             list(fns),
             skip_missions=self.banned_missions if self.banned_missions else [],
@@ -414,6 +419,16 @@ class MultiDBD:
             zip(hdr_result["filenames"], hdr_result["mission_names"], strict=True)
         )
 
+        # Build {filename: open_time_epoch} from scan_headers fileopen_times
+        self._file_open_times: dict[str, float] = {}
+        for fn, time_str in zip(
+            hdr_result["filenames"], hdr_result["fileopen_times"], strict=True
+        ):
+            datestr = time_str.replace("_", " ")
+            fmt = "%a %b %d %H:%M:%S %Y"
+            with contextlib.suppress(ValueError, OverflowError):
+                self._file_open_times[fn] = strptimeToEpoch(datestr, fmt)
+
         # Filter to valid files only, preserving order
         fns = DBDList(f for f in fns if f in valid_set)
         fns.sort()
@@ -422,16 +437,22 @@ class MultiDBD:
         if not self.filenames:
             raise DbdError(DBD_ERROR_ALL_FILES_BANNED)
 
-        # Partition into eng/sci
-        eng_files = [f for f in self.filenames if not self.isScienceDataFile(f)]
-        sci_files = [f for f in self.filenames if self.isScienceDataFile(f)]
-        self.dbds = {"eng": eng_files, "sci": sci_files}
+        # Partition into eng/sci and create lightweight DBD objects
+        eng_dbds: list[DBD] = []
+        sci_dbds: list[DBD] = []
+        for f in self.filenames:
+            dbd = DBD(f, cacheDir=self.cacheDir, skip_initial_line=skip_initial_line)
+            if self.isScienceDataFile(f):
+                sci_dbds.append(dbd)
+            else:
+                eng_dbds.append(dbd)
+        self.dbds: dict[str, list[DBD]] = {"eng": eng_dbds, "sci": sci_dbds}
 
         # Bulk read
-        self._eng_data = None
-        self._sci_data = None
         self._eng_columns: dict[str, numpy.ndarray] = {}
         self._sci_columns: dict[str, numpy.ndarray] = {}
+        eng_files = [d.filename for d in eng_dbds]
+        sci_files = [d.filename for d in sci_dbds]
         self._load(eng_files, sci_files)
 
         # Build parameter name lists
@@ -650,13 +671,17 @@ class MultiDBD:
     def set_skip_initial_line(self, skip_initial_line):
         """Change skip_initial_line and trigger a re-read."""
         self.skip_initial_line = skip_initial_line
-        eng_files = self.dbds["eng"]
-        sci_files = self.dbds["sci"]
+        eng_files = [d.filename for d in self.dbds["eng"]]
+        sci_files = [d.filename for d in self.dbds["sci"]]
         self._load(eng_files, sci_files)
 
     def close(self):
         """Release all stored data."""
         self._closed = True
+        for dbd in self.dbds.get("eng", []):
+            dbd.close()
+        for dbd in self.dbds.get("sci", []):
+            dbd.close()
         self._eng_columns = {}
         self._sci_columns = {}
         self.parameterNames = {"eng": [], "sci": []}
@@ -776,48 +801,37 @@ class MultiDBD:
         return len(v) >= 15
 
     def _init_time_limits(self):
-        """Compute global time range from file open times."""
-        all_files = self.dbds["eng"] + self.dbds["sci"]
-        if not all_files:
-            return
-        # Use scan_headers to get open times
-        hdr = scan_headers(all_files)
-        times = []
-        for fn in hdr["filenames"]:
-            if fn in self._file_missions:
-                # Parse open time from header
-                try:
-                    dbd = DBD(fn, self.cacheDir, skip_initial_line=True)
-                    times.append(dbd.get_fileopen_time())
-                    dbd.close()
-                except Exception:  # noqa: BLE001
-                    pass
+        """Compute global time range from file open times (no file I/O)."""
+        times = [
+            t for fn in self.filenames
+            if (t := self._file_open_times.get(fn)) is not None
+        ]
         if times:
             self.time_limits_dataset = (min(times), max(times))
             self.time_limits = [self.time_limits_dataset[0], self.time_limits_dataset[1]]
 
     def _apply_time_limits(self):
-        """Re-filter files based on current time limits, reload data."""
+        """Re-filter files based on current time limits, reload data (no file I/O for filtering)."""
         t_min = self.time_limits[0] or 0
         t_max = self.time_limits[1] or 1e10
 
         eng_files = []
         sci_files = []
         for fn in self.filenames:
-            try:
-                dbd = DBD(fn, self.cacheDir, skip_initial_line=True)
-                t_open = dbd.get_fileopen_time()
-                dbd.close()
-            except Exception:  # noqa: BLE001
-                continue
-            if t_open < t_min or t_open > t_max:
+            t_open = self._file_open_times.get(fn)
+            if t_open is None or t_open < t_min or t_open > t_max:
                 continue
             if self.isScienceDataFile(fn):
                 sci_files.append(fn)
             else:
                 eng_files.append(fn)
 
-        self.dbds = {"eng": eng_files, "sci": sci_files}
+        # Update dbds to only contain DBD objects for files within time limits
+        kept = set(eng_files + sci_files)
+        self.dbds = {
+            "eng": [d for d in self.dbds["eng"] if d.filename in kept],
+            "sci": [d for d in self.dbds["sci"] if d.filename in kept],
+        }
         self._load(eng_files, sci_files)
         self.parameterNames = {
             "eng": sorted(self._eng_columns.keys()),
@@ -828,9 +842,9 @@ class MultiDBD:
     def _convert_seconds(self, timestring):
         """Parse a time string in either short or long format."""
         t_epoch = None
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(ValueError, OverflowError):
             t_epoch = strptimeToEpoch(timestring, "%d %b %Y")
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(ValueError, OverflowError):
             t_epoch = strptimeToEpoch(timestring, "%d %b %Y %H:%M")
         if not t_epoch:
             raise ValueError(

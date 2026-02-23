@@ -66,6 +66,7 @@ struct FileHeaderInfo {
     std::string filename;
     std::string mission_name;
     std::string sensor_list_crc;
+    std::string fileopen_time;
 };
 
 struct HeaderScanResult {
@@ -412,6 +413,7 @@ HeaderScanResult scan_file_headers(
                 fn,
                 hdr.find("mission_name"),
                 hdr.find("sensor_list_crc"),
+                hdr.find("fileopen_time"),
             });
         } catch (const std::exception&) {
             continue;
@@ -695,15 +697,18 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
             py::list out_filenames;
             py::list out_missions;
             py::list out_crcs;
+            py::list out_open_times;
             for (const auto& fh : result.file_headers) {
                 out_filenames.append(fh.filename);
                 out_missions.append(fh.mission_name);
                 out_crcs.append(fh.sensor_list_crc);
+                out_open_times.append(fh.fileopen_time);
             }
             py::dict out;
             out["filenames"] = out_filenames;
             out["mission_names"] = out_missions;
             out["sensor_list_crcs"] = out_crcs;
+            out["fileopen_times"] = out_open_times;
             return out;
         },
         py::arg("filenames"),
@@ -726,6 +731,7 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
         "dict\n"
         "    filenames : list of str\n"
         "    mission_names : list of str\n"
-        "    sensor_list_crcs : list of str"
+        "    sensor_list_crcs : list of str\n"
+        "    fileopen_times : list of str"
     );
 }

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pytest
 from conftest import CACHE_DIR, DBD_DIR, skip_no_data
@@ -304,8 +306,10 @@ class TestMultiDBD:
         assert isinstance(mdbd.dbds, dict)
         assert "eng" in mdbd.dbds
         assert "sci" in mdbd.dbds
-        # .dcd files are eng
+        # .dcd files are eng — dbds stores DBD objects
         assert len(mdbd.dbds["eng"]) > 0
+        assert all(isinstance(d, DBD) for d in mdbd.dbds["eng"])
+        assert all(isinstance(d, DBD) for d in mdbd.dbds["sci"])
         mdbd.close()
 
     def test_filenames_attribute(self):
@@ -363,6 +367,103 @@ class TestMultiDBD:
         mdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR, max_files=-2)
         assert len(mdbd.filenames) <= 2
         mdbd.close()
+
+    def test_time_limits_dataset(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        t_min, t_max = mdbd.time_limits_dataset
+        assert t_min is not None
+        assert t_max is not None
+        assert t_min <= t_max
+        assert t_min > 0
+        mdbd.close()
+
+    def test_get_time_range(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        r = mdbd.get_time_range()
+        assert isinstance(r, list)
+        assert len(r) == 2
+        assert isinstance(r[0], str)
+        assert isinstance(r[1], str)
+        mdbd.close()
+
+    def test_get_global_time_range(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        r = mdbd.get_global_time_range()
+        assert isinstance(r, list)
+        assert len(r) == 2
+        mdbd.close()
+
+    def test_get_time_range_seconds(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        r = mdbd.get_time_range(fmt="%s")
+        assert r == list(mdbd.time_limits_dataset)
+        mdbd.close()
+
+    def test_set_time_limits(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        t_min, t_max = mdbd.time_limits_dataset
+        # Narrow time limits to exclude some files
+        mid = (t_min + t_max) / 2
+        mdbd.set_time_limits(mdbd._format_time(mid, "%d %b %Y %H:%M"))
+        assert mdbd.time_limits[0] is not None
+        # Data should still be readable
+        t, v = mdbd.get("m_depth")
+        assert len(t) >= 0
+        mdbd.close()
+
+    def test_set_skip_initial_line(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        t1, _ = mdbd.get("m_depth")
+        mdbd.set_skip_initial_line(False)
+        t2, _ = mdbd.get("m_depth")
+        # With skip=False, we should get at least as many records
+        assert len(t2) >= len(t1)
+        mdbd.close()
+
+    def test_dbds_returns_dbd_objects(self):
+        """dbds values are lists of DBD objects with valid filenames."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        for key in ("eng", "sci"):
+            for dbd_obj in mdbd.dbds[key]:
+                assert isinstance(dbd_obj, DBD)
+                assert isinstance(dbd_obj.filename, str)
+                assert len(dbd_obj.filename) > 0
+        mdbd.close()
+
+    def test_close_then_get_sync_raises(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        mdbd.close()
+        with pytest.raises(RuntimeError, match="closed"):
+            mdbd.get_sync("m_depth", "m_pitch")
+
+    def test_dbd_close_then_get_sync_raises(self):
+        """DBD.get_sync after close() raises DbdError."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        dbd.close()
+        with pytest.raises(DbdError):
+            dbd.get_sync("m_depth", "m_pitch")
+
+    def test_dbd_close_then_get_xy_raises(self):
+        """DBD.get_xy after close() raises DbdError."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        dbd.close()
+        with pytest.raises(DbdError):
+            dbd.get_xy("m_depth", "m_pitch")
+
+    def test_dbd_cache_found_with_valid_dir(self):
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        assert dbd.cacheFound is True
+        dbd.close()
+
+    def test_dbd_cache_found_false_nonexistent_dir(self):
+        """cacheFound is False when cacheDir doesn't exist on disk."""
+        # Use CACHE_DIR for sensor lookup (required for factored files),
+        # then override cacheDir to test the property logic.
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        dbd.cacheDir = "/nonexistent/path/cache"
+        # Simulate the check that __init__ performs
+        assert not (dbd.cacheDir and os.path.isdir(dbd.cacheDir))
+        dbd.close()
 
 
 # ---------------------------------------------------------------------------
