@@ -1,4 +1,0 @@
-s: T 0 0 8 sci_m_present_time timestamp
-s: T 1 1 4 sci_water_pressure bar
-s: T 2 2 4 sci_water_cond s/m
-s: T 3 3 4 sci_water_temp degc

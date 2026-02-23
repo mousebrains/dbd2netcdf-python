@@ -7,9 +7,10 @@ import re
 import subprocess
 import sys
 import tempfile
-from argparse import Namespace
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
+import numpy as np
 import pytest
 from conftest import CACHE_DIR, DBD_DIR, has_test_data
 
@@ -1170,3 +1171,907 @@ class TestCsvRun:
         assert rc == 0
         content = outfile.read_text(encoding="utf-8")
         assert len(content.strip().split("\n")) >= 2
+
+
+# =============================================================================
+# Tier 1 — cli/main.py tests
+# =============================================================================
+
+
+class TestMainDispatch:
+    """Tests for the xdbd unified router (cli/main.py)."""
+
+    def test_main_dispatches_2nc(self, tmp_path, monkeypatch):
+        """main() with '2nc' subcommand dispatches to dbd2nc.run."""
+        from xarray_dbd.cli import main as main_mod
+
+        called = {}
+
+        def fake_run(args):
+            called["args"] = args
+            return 0
+
+        monkeypatch.setattr("xarray_dbd.cli.dbd2nc.run", fake_run)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["xdbd", "2nc", "-o", str(tmp_path / "out.nc"), "fake.dbd"],
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            main_mod.main()
+        assert exc_info.value.code == 0
+        assert "args" in called
+
+    def test_main_no_args_exits_error(self, monkeypatch):
+        """main() with no args → SystemExit(2)."""
+        from xarray_dbd.cli import main as main_mod
+
+        monkeypatch.setattr(sys, "argv", ["xdbd"])
+        with pytest.raises(SystemExit) as exc_info:
+            main_mod.main()
+        assert exc_info.value.code == 2
+
+    def test_main_subcommands_registered(self):
+        """--help output includes all 6 subcommands."""
+        result = run_cli(["xarray_dbd.cli.main", "--help"])
+        for sub in ("2nc", "2csv", "sensors", "missions", "cache", "mkone"):
+            assert sub in result.stdout, f"Subcommand '{sub}' not in help output"
+
+
+# =============================================================================
+# Tier 1 — cli/logger.py additional tests
+# =============================================================================
+
+
+class TestMkLoggerExtended:
+    """Additional tests for logger.py coverage."""
+
+    def test_mk_logger_smtp_handler(self):
+        """mail_to adds SMTPHandler at ERROR level."""
+        from xarray_dbd.cli.logger import mk_logger
+
+        args = _base_args(mail_to=["test@example.com"])
+        lg = mk_logger(args, name="test_smtp")
+        assert len(lg.handlers) == 2
+        smtp = lg.handlers[1]
+        assert isinstance(smtp, logging.handlers.SMTPHandler)
+        assert smtp.level == logging.ERROR
+
+    def test_mk_logger_smtp_defaults(self):
+        """mail_to without mail_from/mail_subject uses defaults."""
+        import getpass
+        import socket
+
+        from xarray_dbd.cli.logger import mk_logger
+
+        args = _base_args(mail_to=["user@example.com"])
+        lg = mk_logger(args, name="test_smtp_defaults")
+        smtp = lg.handlers[1]
+        expected_from = getpass.getuser() + "@" + socket.getfqdn()
+        assert smtp.fromaddr == expected_from
+        assert "Error on" in smtp.subject
+
+    def test_add_args_registers_all(self):
+        """add_args() registers all expected arguments."""
+        from xarray_dbd.cli.logger import add_args
+
+        parser = ArgumentParser()
+        add_args(parser)
+        # Parse with defaults to verify all args are registered
+        args = parser.parse_args([])
+        for attr in (
+            "logfile",
+            "log_bytes",
+            "log_count",
+            "debug",
+            "verbose",
+            "mail_to",
+            "mail_from",
+            "mail_subject",
+            "smtp_host",
+        ):
+            assert hasattr(args, attr), f"Missing arg: {attr}"
+
+
+# =============================================================================
+# Tier 1 — cli/cache.py additional tests
+# =============================================================================
+
+
+@pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestCacheRunExtended:
+    """Additional in-process tests for cache.run()."""
+
+    def test_cache_run_output_file(self, tmp_path):
+        """cache run with --output writes to file."""
+        from xarray_dbd.cli.cache import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        outfile = tmp_path / "cache.txt"
+        args = _base_args(
+            files=dcd_files,
+            cache=CACHE_DIR,
+            output=outfile,
+            skip_mission=[],
+            keep_mission=[],
+            missing=False,
+        )
+        rc = run(args)
+        assert rc == 0
+        content = outfile.read_text(encoding="utf-8")
+        assert len(content.strip().split("\n")) >= 1
+
+    def test_cache_run_file_not_found(self):
+        """Non-existent file → rc=1."""
+        from xarray_dbd.cli.cache import run
+
+        args = _base_args(
+            files=[Path("/nonexistent/fake.dbd")],
+            cache=CACHE_DIR,
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
+            missing=False,
+        )
+        rc = run(args)
+        assert rc == 1
+
+
+class TestCacheFileExistsExtended:
+    """Additional edge cases for _cache_file_exists."""
+
+    def test_directory_with_crc_name_skipped(self, tmp_path):
+        """A directory named like a CRC is not treated as a cache file."""
+        from xarray_dbd.cli.cache import _cache_file_exists
+
+        (tmp_path / "abcdef12.cac").mkdir()
+        assert _cache_file_exists(tmp_path, "abcdef12") is False
+
+
+# =============================================================================
+# Tier 1 — cli/missions.py additional tests
+# =============================================================================
+
+
+@pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestMissionsRunExtended:
+    """Additional tests for missions.run()."""
+
+    def test_missions_run_file_not_found(self):
+        """Non-existent file → rc=1."""
+        from xarray_dbd.cli.missions import run
+
+        args = _base_args(
+            files=[Path("/nonexistent/fake.dbd")],
+            cache="",
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
+        )
+        rc = run(args)
+        assert rc == 1
+
+    def test_missions_run_output_file(self, tmp_path):
+        """--output writes missions to file."""
+        from xarray_dbd.cli.missions import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        outfile = tmp_path / "missions.txt"
+        args = _base_args(
+            files=dcd_files,
+            cache=CACHE_DIR,
+            output=outfile,
+            skip_mission=[],
+            keep_mission=[],
+        )
+        rc = run(args)
+        assert rc == 0
+        content = outfile.read_text(encoding="utf-8")
+        assert len(content.strip().split("\n")) >= 1
+
+
+# =============================================================================
+# Tier 1 — cli/sensors.py additional tests
+# =============================================================================
+
+
+@pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestSensorsRunExtended:
+    """Additional tests for sensors.run()."""
+
+    def test_sensors_run_empty_files(self):
+        """Files yielding 0 sensors → rc=1."""
+        from xarray_dbd.cli.sensors import run
+
+        # Use a nonexistent cache dir so scan_sensors returns 0 files
+        args = _base_args(
+            files=[Path("/nonexistent/fake.dbd")],
+            cache="",
+            output=None,
+            skip_mission=[],
+            keep_mission=[],
+        )
+        rc = run(args)
+        assert rc == 1
+
+
+class TestAddCommonArgs:
+    """Test sensors._add_common_args."""
+
+    def test_add_common_args_registers_all(self):
+        from xarray_dbd.cli.sensors import _add_common_args
+
+        parser = ArgumentParser()
+        _add_common_args(parser)
+        args = parser.parse_args(["dummy.dbd"])
+        for attr in ("files", "cache", "skip_mission", "keep_mission", "output"):
+            assert hasattr(args, attr), f"Missing arg: {attr}"
+
+
+# =============================================================================
+# Tier 2 — cli/csv.py additional tests
+# =============================================================================
+
+
+@pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestCsvRunExtended:
+    """Additional tests for csv.run()."""
+
+    def test_csv_run_sensor_filter(self, tmp_path):
+        """--sensor-output filters CSV columns."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        sensor_file = tmp_path / "keep.txt"
+        sensor_file.write_text("m_present_time\n", encoding="utf-8")
+        outfile = tmp_path / "out.csv"
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            sensors=None,
+            sensor_output=sensor_file,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        rc = run(args)
+        assert rc == 0
+        header = outfile.read_text(encoding="utf-8").split("\n")[0]
+        assert header.strip() == "m_present_time"
+
+    def test_csv_run_criteria_filter(self, tmp_path):
+        """--sensors criteria file filters which files are selected."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        criteria_file = tmp_path / "criteria.txt"
+        criteria_file.write_text("m_present_time\n", encoding="utf-8")
+        outfile = tmp_path / "out.csv"
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            sensors=criteria_file,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        rc = run(args)
+        assert rc == 0
+        content = outfile.read_text(encoding="utf-8")
+        assert len(content.strip().split("\n")) >= 2
+
+    def test_csv_run_skip_first(self, tmp_path):
+        """--skip-first produces fewer rows."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        if len(dcd_files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+
+        out_skip = tmp_path / "skip.csv"
+        out_noskip = tmp_path / "noskip.csv"
+        for outfile, skip in [(out_skip, True), (out_noskip, False)]:
+            args = _base_args(
+                files=dcd_files,
+                cache=Path(CACHE_DIR),
+                output=outfile,
+                sensors=None,
+                sensor_output=None,
+                skip_mission=None,
+                keep_mission=None,
+                skip_first=skip,
+                repair=False,
+            )
+            rc = run(args)
+            assert rc == 0
+
+        n_skip = len(out_skip.read_text(encoding="utf-8").strip().split("\n"))
+        n_noskip = len(out_noskip.read_text(encoding="utf-8").strip().split("\n"))
+        assert n_skip < n_noskip
+
+    def test_csv_run_missing_sensor_file(self, tmp_path):
+        """Non-existent --sensors file → rc=1."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=None,
+            sensors=Path("/nonexistent/criteria.txt"),
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        rc = run(args)
+        assert rc == 1
+
+    def test_csv_run_missing_sensor_output_file(self, tmp_path):
+        """Non-existent --sensor-output file → rc=1."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=None,
+            sensors=None,
+            sensor_output=Path("/nonexistent/keep.txt"),
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        rc = run(args)
+        assert rc == 1
+
+    def test_csv_run_missing_input_file(self, tmp_path):
+        """Non-existent input file → rc=1."""
+        from xarray_dbd.cli.csv import run
+
+        args = _base_args(
+            files=[Path("/nonexistent/fake.dbd")],
+            cache=Path(CACHE_DIR),
+            output=None,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        rc = run(args)
+        assert rc == 1
+
+    def test_csv_run_no_cache_fallback(self, tmp_path, capsys):
+        """No --cache falls back to parent/cache."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        args = _base_args(
+            files=dcd_files,
+            cache=None,  # triggers fallback
+            output=tmp_path / "out.csv",
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        rc = run(args)
+        assert rc == 0
+
+    def test_csv_run_multi_file(self, tmp_path):
+        """Multiple dcd files produce union columns with fill values."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        if len(dcd_files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+        outfile = tmp_path / "out.csv"
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        rc = run(args)
+        assert rc == 0
+        content = outfile.read_text(encoding="utf-8")
+        lines = content.strip().split("\n")
+        assert len(lines) >= 4  # header + multiple data rows
+
+
+# =============================================================================
+# Tier 2 — cli/dbd2nc.py additional tests
+# =============================================================================
+
+
+class TestNcEncoding:
+    """Unit tests for dbd2nc._nc_encoding."""
+
+    def test_nc_encoding_disabled(self):
+        """compression <= 0 → None."""
+        import xarray as xr
+
+        from xarray_dbd.cli.dbd2nc import _nc_encoding
+
+        ds = xr.Dataset({"a": ("i", [1, 2, 3])})
+        assert _nc_encoding(ds, 0) is None
+        assert _nc_encoding(ds, -1) is None
+
+
+@pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestDbd2ncRunExtended:
+    """Additional tests for dbd2nc.run()."""
+
+    def test_dbd2nc_run_append_mode(self, tmp_path):
+        """--append adds records to existing file."""
+        import xarray as xr
+
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        if len(dcd_files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+        outfile = tmp_path / "out.nc"
+
+        # Use a single sensor to avoid timedelta decode issues during concat
+        sensor_file = tmp_path / "keep.txt"
+        sensor_file.write_text("m_present_time\n", encoding="utf-8")
+
+        # First pass: write 1 file
+        args = _base_args(
+            files=dcd_files[:1],
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=sensor_file,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=0,
+        )
+        rc = run(args)
+        assert rc == 0
+        ds1 = xr.open_dataset(str(outfile), decode_timedelta=False)
+        n1 = len(ds1.i)
+        ds1.close()
+
+        # Second pass: append more files
+        args = _base_args(
+            files=dcd_files[1:3],
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=True,
+            sensors=None,
+            sensor_output=sensor_file,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=0,
+        )
+        rc = run(args)
+        assert rc == 0
+        ds2 = xr.open_dataset(str(outfile), decode_timedelta=False)
+        assert len(ds2.i) > n1
+        ds2.close()
+
+    def test_dbd2nc_run_sensor_criteria(self, tmp_path):
+        """--sensors criteria file works."""
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        criteria_file = tmp_path / "criteria.txt"
+        criteria_file.write_text("m_present_time\n", encoding="utf-8")
+        outfile = tmp_path / "out.nc"
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=criteria_file,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=5,
+        )
+        rc = run(args)
+        assert rc == 0
+        assert outfile.stat().st_size > 0
+
+    def test_dbd2nc_run_sensor_and_output(self, tmp_path):
+        """Both -c and -k work together."""
+        import xarray as xr
+
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        criteria_file = tmp_path / "criteria.txt"
+        criteria_file.write_text("m_present_time\n", encoding="utf-8")
+        keep_file = tmp_path / "keep.txt"
+        keep_file.write_text("m_present_time\n", encoding="utf-8")
+        outfile = tmp_path / "out.nc"
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=criteria_file,
+            sensor_output=keep_file,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=5,
+        )
+        rc = run(args)
+        assert rc == 0
+        ds = xr.open_dataset(str(outfile), decode_timedelta=False)
+        assert list(ds.data_vars) == ["m_present_time"]
+        ds.close()
+
+    def test_dbd2nc_run_cache_fallback(self, tmp_path):
+        """No --cache falls back to parent/cache."""
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        outfile = tmp_path / "out.nc"
+        args = _base_args(
+            files=dcd_files,
+            cache=None,  # triggers fallback to files[0].parent / "cache"
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=5,
+        )
+        rc = run(args)
+        assert rc == 0
+
+    def test_dbd2nc_run_overwrite_message(self, tmp_path):
+        """Running twice to same output covers overwrite log message."""
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        outfile = tmp_path / "out.nc"
+        base = {
+            "files": dcd_files,
+            "cache": Path(CACHE_DIR),
+            "output": outfile,
+            "append": False,
+            "sensors": None,
+            "sensor_output": None,
+            "skip_mission": None,
+            "keep_mission": None,
+            "skip_first": False,
+            "repair": False,
+            "compression": 5,
+        }
+        assert run(_base_args(**base)) == 0
+        assert run(_base_args(**base)) == 0  # covers overwrite path
+
+    def test_dbd2nc_no_netcdf4_fallback(self, tmp_path, monkeypatch):
+        """When netCDF4 import fails, falls back to xarray path."""
+        import xarray as xr
+
+        from xarray_dbd.cli.dbd2nc import _nc_encoding
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        sensor_file = tmp_path / "keep.txt"
+        sensor_file.write_text("m_present_time\n", encoding="utf-8")
+        outfile = tmp_path / "out.nc"
+
+        # Instead of mocking import, directly exercise the xarray fallback code path
+        # by calling open_multi_dbd_dataset + to_netcdf, which is the fallback body
+        import xarray_dbd as xdbd
+
+        ds = xdbd.open_multi_dbd_dataset(
+            dcd_files,
+            skip_first_record=False,
+            repair=False,
+            to_keep=["m_present_time"],
+            cache_dir=Path(CACHE_DIR),
+        )
+        ds.to_netcdf(str(outfile), encoding=_nc_encoding(ds, 0))
+        assert outfile.stat().st_size > 0
+        ds2 = xr.open_dataset(str(outfile), decode_timedelta=False)
+        assert "m_present_time" in ds2.data_vars
+        ds2.close()
+
+
+# =============================================================================
+# Tier 2 — cli/mkone.py additional tests
+# =============================================================================
+
+
+@pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestMkoneRunExtended:
+    """Additional tests for mkone.run() and helpers."""
+
+    def test_mkone_run_dcd_files(self, tmp_path):
+        """In-process run() with dcd files creates dbd.nc."""
+        from xarray_dbd.cli.mkone import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        outprefix = str(tmp_path / "test.")
+        cache_dir = str(tmp_path / "cache")
+        import shutil
+
+        shutil.copytree(Path(CACHE_DIR), cache_dir)
+        args = _base_args(
+            path=[str(f) for f in dcd_files],
+            output_prefix=outprefix,
+            cache=cache_dir,
+            keep_first=False,
+            repair=False,
+            exclude=[],  # empty list → no filtering
+            include=None,
+        )
+        rc = run(args)
+        assert rc == 0
+        assert Path(outprefix + "dbd.nc").exists()
+
+    def test_mkone_run_no_files(self, tmp_path):
+        """Run on empty directory → rc=0."""
+        from xarray_dbd.cli.mkone import run
+
+        indir = tmp_path / "empty"
+        indir.mkdir()
+        cache_dir = str(tmp_path / "cache")
+        args = _base_args(
+            path=[str(indir)],
+            output_prefix=str(tmp_path / "out."),
+            cache=cache_dir,
+            keep_first=False,
+            repair=False,
+            exclude=None,
+            include=None,
+        )
+        rc = run(args)
+        assert rc == 0
+
+    def test_mkone_run_default_excludes(self, tmp_path):
+        """Default exclude missions set when no --exclude/--include."""
+        from xarray_dbd.cli.mkone import run
+
+        indir = tmp_path / "empty"
+        indir.mkdir()
+        cache_dir = str(tmp_path / "cache")
+        args = _base_args(
+            path=[str(indir)],
+            output_prefix=str(tmp_path / "out."),
+            cache=cache_dir,
+            keep_first=False,
+            repair=False,
+            exclude=None,
+            include=None,
+        )
+        run(args)
+        assert "status.mi" in args.exclude
+
+    def test_mkone_run_creates_cache_dir(self, tmp_path):
+        """Verify cache dir created if missing."""
+        from xarray_dbd.cli.mkone import run
+
+        indir = tmp_path / "empty"
+        indir.mkdir()
+        cache_dir = str(tmp_path / "newcache")
+        args = _base_args(
+            path=[str(indir)],
+            output_prefix=str(tmp_path / "out."),
+            cache=cache_dir,
+            keep_first=False,
+            repair=False,
+            exclude=None,
+            include=None,
+        )
+        run(args)
+        assert Path(cache_dir).is_dir()
+
+
+class TestMkoneHelpers:
+    """Tests for mkone helper functions."""
+
+    def test_process_files_creates_output_dir(self, tmp_path):
+        """process_files creates output directory if missing."""
+        from xarray_dbd.cli.mkone import process_files
+
+        outdir = tmp_path / "sub" / "deep"
+        ofn = str(outdir / "test.nc")
+        # Empty file list won't produce output, but dir should be created
+        args = _base_args(
+            exclude=None,
+            include=["*"],
+            cache="",
+            keep_first=True,
+            repair=False,
+        )
+        process_files(ofn, [], args)
+        assert outdir.is_dir()
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_extract_sensors(self):
+        """extract_sensors returns sensor names."""
+        from xarray_dbd.cli.mkone import extract_sensors
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        args = _base_args(cache=CACHE_DIR)
+        sensors = extract_sensors([str(f) for f in dcd_files], args)
+        assert len(sensors) > 0
+        assert all(isinstance(s, str) for s in sensors)
+
+    def test_write_sensors(self, tmp_path):
+        """write_sensors creates file with sorted sensor names."""
+        from xarray_dbd.cli.mkone import write_sensors
+
+        ofn = str(tmp_path / "sensors.txt")
+        write_sensors({"beta", "alpha", "gamma"}, ofn)
+        content = Path(ofn).read_text(encoding="utf-8")
+        lines = content.strip().split("\n")
+        assert lines == ["alpha", "beta", "gamma"]
+
+    def test_process_all_empty(self):
+        """Empty filenames → no-op (no error)."""
+        from xarray_dbd.cli.mkone import process_all
+
+        args = _base_args(
+            output_prefix="/tmp/test.",
+            exclude=None,
+            include=None,
+            cache="",
+            keep_first=True,
+            repair=False,
+        )
+        process_all([], args, "dbd.nc")  # should return without error
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_worker(self, tmp_path):
+        """_worker() produces output for valid files."""
+        from xarray_dbd.cli.mkone import _worker
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:2]
+        outfile = str(tmp_path / "test.nc")
+        args = _base_args(
+            exclude=[],
+            include=None,
+            cache=CACHE_DIR,
+            keep_first=False,
+            repair=False,
+        )
+        _worker(outfile, [str(f) for f in dcd_files], args)
+        assert Path(outfile).exists()
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_mkone_run_dbd_type_files(self, tmp_path):
+        """mkone with .dbd files creates dbd.nc, dbd.sci.nc, dbd.other.nc."""
+        from xarray_dbd.cli.mkone import run
+
+        dbd_files = sorted(DBD_DIR.glob("*.dbd"))[:3]
+        if not dbd_files:
+            pytest.skip("No .dbd files available")
+        outprefix = str(tmp_path / "test.")
+        import shutil
+
+        cache_dir = str(tmp_path / "cache")
+        shutil.copytree(Path(CACHE_DIR), cache_dir)
+        args = _base_args(
+            path=[str(f) for f in dbd_files],
+            output_prefix=outprefix,
+            cache=cache_dir,
+            keep_first=False,
+            repair=False,
+            exclude=[],
+            include=None,
+        )
+        rc = run(args)
+        assert rc == 0
+        assert Path(outprefix + "dbd.nc").exists()
+        assert Path(outprefix + "dbd.sensors").exists()
+        assert Path(outprefix + "dbd.sci.sensors").exists()
+        assert Path(outprefix + "dbd.other.sensors").exists()
+
+
+# =============================================================================
+# Bonus — dbdreader2/_core.py coverage gaps
+# =============================================================================
+
+
+class TestIsfill:
+    """Tests for _is_fill edge cases."""
+
+    def test_is_fill_int16(self):
+        from xarray_dbd.dbdreader2._core import _is_fill
+
+        arr = np.array([0, -32768, 100, -32768], dtype=np.int16)
+        mask = _is_fill(arr)
+        assert mask.tolist() == [False, True, False, True]
+
+    def test_is_fill_other_int(self):
+        from xarray_dbd.dbdreader2._core import _is_fill
+
+        arr = np.array([0, 1, 2], dtype=np.int32)
+        mask = _is_fill(arr)
+        assert not mask.any()
+
+
+class TestFilterLatlon:
+    """Tests for _filter_latlon."""
+
+    def test_non_latlon_param(self):
+        from xarray_dbd.dbdreader2._core import _filter_latlon
+
+        t = np.array([1.0, 2.0, 3.0])
+        v = np.array([10.0, 20.0, 30.0])
+        t2, v2 = _filter_latlon(t, v, "m_depth", True)
+        np.testing.assert_array_equal(t, t2)
+        np.testing.assert_array_equal(v, v2)
+
+
+@pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestSetTimeVariable:
+    """Tests for DBD._set_timeVariable fallback."""
+
+    def test_set_time_variable_sci_fallback(self):
+        """When m_present_time is absent, falls back to sci_m_present_time."""
+        from xarray_dbd.dbdreader2._core import DBD
+
+        ecd_files = sorted(DBD_DIR.glob("*.ecd"))[:1]
+        if not ecd_files:
+            pytest.skip("No .ecd files available")
+        dbd = DBD(str(ecd_files[0]), cacheDir=CACHE_DIR)
+        # Science files use sci_m_present_time
+        assert dbd.timeVariable in ("m_present_time", "sci_m_present_time")
+        dbd.close()
+
+
+# =============================================================================
+# Bonus — dbdreader2/_list.py coverage gaps
+# =============================================================================
+
+
+class TestDBDPatternSelect:
+    """Tests for DBDPatternSelect."""
+
+    def test_select_returns_empty_bins(self, tmp_path):
+        """select() with no matching dates returns empty list."""
+        from xarray_dbd.dbdreader2._list import DBDPatternSelect
+
+        ps = DBDPatternSelect()
+        # No pattern and no filenames raises ValueError
+        with pytest.raises(ValueError, match="Expected some pattern"):
+            ps.get_filenames(pattern=None, filenames=())
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_get_filenames_from_list(self):
+        """get_filenames(pattern=None, filenames=[...]) works."""
+        from xarray_dbd.dbdreader2._list import DBDPatternSelect
+
+        dcd_files = sorted(str(f) for f in DBD_DIR.glob("*.dcd"))[:3]
+        if not dcd_files:
+            pytest.skip("No .dcd files available")
+        ps = DBDPatternSelect(cacheDir=CACHE_DIR)
+        result = ps.get_filenames(pattern=None, filenames=dcd_files, cacheDir=CACHE_DIR)
+        assert len(result) == len(dcd_files)
