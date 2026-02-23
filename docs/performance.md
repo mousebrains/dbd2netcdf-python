@@ -51,41 +51,39 @@ approaches are comparable (~6-7 ms). xarray-dbd always decodes all
 sensors (even when `to_keep` is set) to maintain binary stream
 alignment, then discards the unwanted columns.
 
-## Memory (RSS)
+## Peak Memory (Python heap via tracemalloc)
 
-Resident Set Size measured via `resource.getrusage(RUSAGE_SELF).ru_maxrss`
-in isolated subprocesses (one measurement per scenario).
+Peak Python-level allocations measured via `tracemalloc`. Note that
+xarray-dbd's C++ backend allocates column arrays in C++ which
+tracemalloc does not track, so xarray-dbd numbers undercount true
+memory usage. dbdreader's C extension returns numpy arrays to Python,
+so its allocations are mostly visible to tracemalloc.
 
-| Scenario | xarray-dbd | dbdreader |
-|---|--:|--:|
-| Import only | 84 MB | 59 MB |
-| Single file, all sensors | 118 MB | 58 MB |
-| Single file, 5 sensors | 116 MB | 58 MB |
-| 18 files, all sensors | 990 MB | 147 MB |
-| 18 files, 5 sensors | 87 MB | 69 MB |
+| Scenario | xarray-dbd | dbdreader (per sensor) | dbdreader (all at once) |
+|---|--:|--:|--:|
+| Single file, all sensors | 2.6 MB | 1.1 MB | 1.6 MB |
+| Single file, 5 sensors | 262 KB | 670 KB | 669 KB |
+| 18 files, all sensors | 2.4 MB | 83.9 MB | 169.2 MB |
+| 18 files, 5 sensors | 19 KB | 9.4 MB | 9.7 MB |
 
 ### Analysis
 
-xarray-dbd has higher baseline RSS because it imports xarray + numpy +
-pybind11 (84 MB) vs. dbdreader's numpy + C extension (59 MB).
+For the multi-file all-sensor scenario, dbdreader's batch `get()` peaks
+at 169 MB — roughly double the per-sensor approach (84 MB) — because it
+must return all sensor arrays simultaneously rather than one at a time
+where Python can collect intermediate results.
 
-For the multi-file all-sensors scenario, xarray-dbd peaks at ~990 MB
-because the C++ two-pass reader holds all 18,054 records x 1,706 sensors
-in typed column arrays simultaneously. dbdreader's 147 MB reflects
-reading one sensor at a time — each `get()` returns a small array that
-Python can collect before the next call.
-
-For filtered reads (5 sensors), xarray-dbd memory is modest (87 MB)
-because the C++ backend discards non-matching columns early.
+xarray-dbd's tracemalloc numbers appear low because the C++ backend
+allocates typed column arrays outside the Python heap. The returned
+xarray Dataset wraps these arrays without copying. Actual process RSS
+is significantly higher (see Large Deployment below).
 
 ## Methodology
 
-- **Wall time**: `time.perf_counter()`, best of 3 runs, measured after
-  a warm-up call.
-- **RSS memory**: `resource.getrusage(RUSAGE_SELF).ru_maxrss` in fresh
-  subprocess invocations. This captures both Python and C/C++ heap
-  allocations. Note that Python's `tracemalloc` only tracks Python-level
-  allocations and misses C/C++ memory entirely.
+- **Wall time**: `time.perf_counter()`, best of 3 runs.
+- **Peak memory**: `tracemalloc` peak, max across 3 runs. Tracks
+  Python-level allocations only — C/C++ heap allocations (e.g.
+  xarray-dbd's column arrays) are not captured.
 - **Benchmark script**: `scripts/benchmark_comparison.py`
 
 ## Large Deployment
