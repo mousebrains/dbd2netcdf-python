@@ -496,20 +496,16 @@ class MultiDBD:
         return_nans=False,
         include_source=False,
         max_values_to_read=-1,
+        continue_on_reading_error=False,
     ):
         """Return ``(t, v)`` per parameter."""
         self._check_closed()
-
-        if include_source:
-            raise NotImplementedError("include_source is not yet supported in dbdreader2")
 
         if max_values_to_read > 0 and len(parameters) != 1:
             raise ValueError(
                 "Limiting the values to be read for multiple parameters "
                 "potentially yields undefined behaviour.\n"
             )
-
-        self._ensure_loaded(parameters)
 
         # Validate parameters
         all_known = set(self.parameterNames.get("eng", [])) | set(
@@ -522,6 +518,18 @@ class MultiDBD:
             else:
                 mesg = f"Parameters {{{','.join(invalid)}}} are unknown glider sensor names."
             raise DbdError(value=DBD_ERROR_NO_VALID_PARAMETERS, mesg=mesg, data=invalid)
+
+        if include_source:
+            return self._get_with_source(
+                parameters,
+                return_nans=return_nans,
+                decimalLatLon=decimalLatLon,
+                discardBadLatLon=discardBadLatLon,
+                max_values_to_read=max_values_to_read,
+                continue_on_reading_error=continue_on_reading_error,
+            )
+
+        self._ensure_loaded(parameters)
 
         results = []
         for p in parameters:
@@ -848,6 +856,67 @@ class MultiDBD:
                 v = _convertToDecimal(v)
 
         return t, v
+
+    def _get_with_source(
+        self,
+        parameters,
+        *,
+        return_nans,
+        decimalLatLon,  # noqa: N803
+        discardBadLatLon,  # noqa: N803
+        max_values_to_read,
+        continue_on_reading_error=False,
+    ):
+        """Implement ``get(..., include_source=True)`` by iterating per-file DBD objects."""
+        eng_names_set = set(self._eng_param_names)
+
+        results = []
+        for p in parameters:
+            dbds = self.dbds["sci"] if p not in eng_names_set else self.dbds["eng"]
+            t_chunks: list[numpy.ndarray] = []
+            v_chunks: list[numpy.ndarray] = []
+            src_chunks: list[list[DBD]] = []
+            for dbd in dbds:
+                if not dbd.has_parameter(p):
+                    continue
+                try:
+                    tv = dbd.get(
+                        p,
+                        decimalLatLon=decimalLatLon,
+                        discardBadLatLon=discardBadLatLon,
+                        return_nans=return_nans,
+                        check_for_invalid_parameters=False,
+                    )
+                except (RuntimeError, OSError) as e:
+                    if continue_on_reading_error:
+                        logger.warning("Reading from %s returned an error (%s).", dbd.filename, e)
+                        continue
+                    raise
+                t, v = tv
+                if len(t) == 0:
+                    continue
+                t_chunks.append(t)
+                v_chunks.append(v)
+                src_chunks.append([dbd] * len(t))
+            if t_chunks:
+                t_cat = numpy.hstack(t_chunks)
+                v_cat = numpy.hstack(v_chunks)
+                sources: list[DBD] = []
+                for chunk in src_chunks:
+                    sources.extend(chunk)
+            else:
+                t_cat = numpy.array([], dtype=numpy.float64)
+                v_cat = numpy.array([], dtype=numpy.float64)
+                sources = []
+            if max_values_to_read > 0:
+                t_cat = t_cat[:max_values_to_read]
+                v_cat = v_cat[:max_values_to_read]
+                sources = sources[:max_values_to_read]
+            results.append(((t_cat, v_cat), sources))
+
+        if len(parameters) == 1:
+            return results[0]
+        return results
 
     def _resolve_ifun(self, param, factory):
         """Resolve interpolating function factory for a parameter."""

@@ -173,9 +173,10 @@ Open multiple DBD files as a single concatenated xarray Dataset.
 
 ## Migration from dbdreader
 
-xarray-dbd provides drop-in `DBD` and `MultiDBD` classes that mirror the
-[dbdreader](https://pypi.org/project/dbdreader/) API. For a fully
-transparent swap, alias the import:
+The dbdreader2 API is derived from Lucas Merckelbach's
+[dbdreader](https://github.com/smerckel/dbdreader) library. xarray-dbd
+provides drop-in `DBD` and `MultiDBD` classes that mirror the dbdreader API.
+For a fully transparent swap, alias the import:
 
 ```python
 # Before (dbdreader)
@@ -213,7 +214,7 @@ dbd = xdbd.DBD("file.dcd", cacheDir="cache")
 | `get_xy()`, `get_CTD_sync()` | Yes | Yes |
 | `decimalLatLon` | Yes | Yes |
 | `set_time_limits()` | Yes | Yes |
-| `include_source` | No | Yes |
+| `include_source` | Yes | Yes |
 
 ### Use-case examples
 
@@ -329,9 +330,6 @@ mdbd = dbdreader.MultiDBD(
   open time, including or excluding entire files. It does not filter
   individual records within a file. dbdreader also filters by file open
   time, so this is operationally the same for most use cases.
-
-- **`include_source` not supported.** Passing `include_source=True` to
-  `get()` raises `NotImplementedError`.
 
 - **Error handling.** The same `DbdError` exception class and numeric
   error codes (`DBD_ERROR_CACHE_NOT_FOUND`, etc.) are provided for

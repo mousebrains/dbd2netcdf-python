@@ -26,6 +26,7 @@ from ._errors import (
     DBD_ERROR_NO_FILES_FOUND,
     DBD_ERROR_NO_TIME_VARIABLE,
     DBD_ERROR_NO_VALID_PARAMETERS,
+    DBD_ERROR_READ_ERROR,
     DbdError,
 )
 from ._list import DBDList, DBDPatternSelect
@@ -60,6 +61,7 @@ __all__ = [
     "DBD_ERROR_NO_FILES_FOUND",
     "DBD_ERROR_NO_TIME_VARIABLE",
     "DBD_ERROR_NO_VALID_PARAMETERS",
+    "DBD_ERROR_READ_ERROR",
     "DbdError",
     "LATLON_PARAMS",
     "MultiDBD",

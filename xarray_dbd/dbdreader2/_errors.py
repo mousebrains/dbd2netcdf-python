@@ -17,6 +17,7 @@ DBD_ERROR_INVALID_ENCODING = 10
 DBD_ERROR_INVALID_FILE_CRITERION_SPECIFIED = 11
 DBD_ERROR_NO_DATA_TO_INTERPOLATE = 12
 DBD_ERROR_NO_DATA = 13
+DBD_ERROR_READ_ERROR = 14
 
 
 class DbdError(Exception):
@@ -54,6 +55,8 @@ class DbdError(Exception):
             mesg = "One or more parameters that are to be interpolated, does/do not have any data."
         elif self.value == DBD_ERROR_NO_DATA:
             mesg = "One or more parameters do not have any data."
+        elif self.value == DBD_ERROR_READ_ERROR:
+            mesg = "Error reading DBD file."
         else:
             mesg = f"Undefined error. ({self.value})"
         if self.mesg:

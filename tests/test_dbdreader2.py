@@ -433,10 +433,57 @@ class TestMultiDBD:
         assert MultiDBD.isScienceDataFile("test.dcd") is False
         assert MultiDBD.isScienceDataFile("test.sbd") is False
 
-    def test_include_source_not_implemented(self):
+    def test_include_source_single_param(self):
         mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
-        with pytest.raises(NotImplementedError):
-            mdbd.get("m_depth", include_source=True)
+        result = mdbd.get("m_depth", include_source=True)
+        (t, v), sources = result
+        assert len(sources) == len(t)
+        assert len(sources) == len(v)
+        assert len(t) > 0
+        for src in sources:
+            assert hasattr(src, "filename")
+            assert isinstance(src, DBD)
+        mdbd.close()
+
+    def test_include_source_multi_param(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        results = mdbd.get("m_depth", "m_heading", include_source=True)
+        assert isinstance(results, list)
+        assert len(results) == 2
+        for (t, v), sources in results:
+            assert len(sources) == len(t)
+            assert len(sources) == len(v)
+        mdbd.close()
+
+    def test_include_source_sources_match_files(self):
+        files = _all_files()
+        mdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+        (t, v), sources = mdbd.get("m_depth", include_source=True)
+        source_filenames = {src.filename for src in sources}
+        # Every source file must be one of the input files
+        assert source_filenames <= set(files)
+        mdbd.close()
+
+    def test_include_source_max_values(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        n = 5
+        (t, v), sources = mdbd.get("m_depth", include_source=True, max_values_to_read=n)
+        assert len(t) == n
+        assert len(v) == n
+        assert len(sources) == n
+        mdbd.close()
+
+    def test_continue_on_reading_error_accepted(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        t, v = mdbd.get("m_depth", continue_on_reading_error=True)
+        assert len(t) > 0
+        mdbd.close()
+
+    def test_continue_on_reading_error_with_include_source(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        (t, v), sources = mdbd.get("m_depth", include_source=True, continue_on_reading_error=True)
+        assert len(t) > 0
+        assert len(sources) == len(t)
         mdbd.close()
 
     def test_close_guards(self):
