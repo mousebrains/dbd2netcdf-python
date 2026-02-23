@@ -9,81 +9,69 @@ glider Dinkum Binary Data (DBD) files.
 - **Dataset**: 18 compressed `.dcd` files, 18,054 total records, 1,706 sensors
 - **Hardware**: Apple M2 Pro, 16 GB RAM
 - **OS**: macOS 15 (Sequoia)
-- **Python**: 3.12
-- **xarray-dbd**: 0.1.0 (C++ parser via pybind11)
-- **dbdreader**: 0.5.4 (C extension, CPython API)
+- **Python**: 3.14
+- **xarray-dbd**: 0.2.0 (C++ parser via pybind11)
+- **dbdreader**: 0.5.8 (C extension, CPython API)
 
-## Wall Time
+## Results
 
 Best of 3 runs per scenario. dbdreader is tested two ways:
 - **per sensor**: calls `get()` once per variable in a loop (re-parses the file each time)
 - **all at once**: calls `get(*params)` with all variables unpacked (single file parse per call)
 
-| Scenario | xarray-dbd | dbdreader (per sensor) | dbdreader (all at once) |
-|---|--:|--:|--:|
-| Single file, all sensors | **47 ms** | 187 ms | 383 ms |
-| Single file, 5 sensors | 6 ms | 7 ms | **6 ms** |
-| 18 files, all sensors | **105 ms** | 208 s | 20.1 s |
-| 18 files, 5 sensors | **32 ms** | 705 ms | 364 ms |
-
-### Analysis
-
-xarray-dbd reads **all sensors in a single pass** per file. Every
-data record is decoded once and each sensor value is stored into a
-pre-allocated typed column. This makes whole-dataset access very fast
-regardless of sensor count.
-
-dbdreader's `get()` accepts multiple sensor names and extracts them
-all in a single file parse via its C extension. However, there is no
-data caching — each call to `get()` re-opens and re-parses the binary
-file from scratch. For the per-sensor loop, cost scales as
-**N_sensors x N_files**. For the 18-file, all-sensor scenario, the
-per-sensor approach calls `get()` 1,705 times across 18 files (208 s),
-while the batch approach re-parses each file only once (20.1 s).
-xarray-dbd is still ~190x faster than even the batch approach.
-
-For the single-file all-sensor case, dbdreader's batch `get()` is
-actually slower than the per-sensor loop (383 ms vs 187 ms), likely
-due to overhead of returning all sensor arrays at once.
-
-For extracting a small number of sensors from a single file, all three
-approaches are comparable (~6-7 ms). xarray-dbd always decodes all
-sensors (even when `to_keep` is set) to maintain binary stream
-alignment, then discards the unwanted columns.
-
-## Peak Memory (Python heap via tracemalloc)
-
-Peak Python-level allocations measured via `tracemalloc`. Note that
-xarray-dbd's C++ backend allocates column arrays in C++ which
-tracemalloc does not track, so xarray-dbd numbers undercount true
-memory usage. dbdreader's C extension returns numpy arrays to Python,
-so its allocations are mostly visible to tracemalloc.
+### Wall Time
 
 | Scenario | xarray-dbd | dbdreader (per sensor) | dbdreader (all at once) |
 |---|--:|--:|--:|
-| Single file, all sensors | 2.6 MB | 1.1 MB | 1.6 MB |
-| Single file, 5 sensors | 262 KB | 670 KB | 669 KB |
-| 18 files, all sensors | 2.4 MB | 83.9 MB | 169.2 MB |
-| 18 files, 5 sensors | 19 KB | 9.4 MB | 9.7 MB |
+| Single file, all sensors | **560 ms** | 570 ms | 490 ms |
+| Single file, 5 sensors | 520 ms | **430 ms** | 440 ms |
+| 18 files, all sensors | **630 ms** | 204 s | 8.5 s |
+| 18 files, 5 sensors | **600 ms** | 930 ms | 620 ms |
+
+### Peak RSS (above baseline)
+
+Peak resident set size measured via `/usr/bin/time -l` in isolated
+subprocesses, minus the baseline RSS of `python -c ''` (~16 MB).
+Captures all memory including Python heap, C/C++ allocations, and
+shared libraries.
+
+| Scenario | xarray-dbd | dbdreader (per sensor) | dbdreader (all at once) |
+|---|--:|--:|--:|
+| Single file, all sensors | 120 MB | **59 MB** | 87 MB |
+| Single file, 5 sensors | 118 MB | **59 MB** | 59 MB |
+| 18 files, all sensors | 992 MB | **71 MB** | 325 MB |
+| 18 files, 5 sensors | 91 MB | **69 MB** | 72 MB |
 
 ### Analysis
 
-For the multi-file all-sensor scenario, dbdreader's batch `get()` peaks
-at 169 MB — roughly double the per-sensor approach (84 MB) — because it
-must return all sensor arrays simultaneously rather than one at a time
-where Python can collect intermediate results.
+**Wall time.** Single-file timings are dominated by Python startup and
+import overhead (~0.5 s), making the libraries comparable. The real
+difference shows in multi-file scenarios: xarray-dbd reads all sensors
+in a single pass per file, so cost is proportional to data volume
+regardless of sensor count. dbdreader's `get()` re-opens and re-parses
+the binary file on every call — the per-sensor loop calls `get()` 1,705
+times across 18 files (204 s), while the batch approach re-parses each
+file only once (8.5 s). xarray-dbd is ~13x faster than even the batch
+approach.
 
-xarray-dbd's tracemalloc numbers appear low because the C++ backend
-allocates typed column arrays outside the Python heap. The returned
-xarray Dataset wraps these arrays without copying. Actual process RSS
-is significantly higher (see Large Deployment below).
+**Memory.** xarray-dbd uses more memory because the C++ backend
+materializes all sensor columns simultaneously. For the 18-file,
+all-sensor case, xarray-dbd peaks at 992 MB (18,054 records x 1,706
+sensors in typed arrays). dbdreader's per-sensor approach stays at
+~70 MB because each `get()` returns one sensor's data and Python can
+collect intermediates. The batch approach peaks at 325 MB since all
+sensor arrays must coexist in memory.
+
+For filtered reads (5 sensors), xarray-dbd memory is modest (91 MB)
+because the C++ backend discards non-matching columns early.
 
 ## Methodology
 
-- **Wall time**: `time.perf_counter()`, best of 3 runs.
-- **Peak memory**: `tracemalloc` peak, max across 3 runs. Tracks
-  Python-level allocations only — C/C++ heap allocations (e.g.
-  xarray-dbd's column arrays) are not captured.
+- **Wall time**: `/usr/bin/time -l` real time, best of 3 isolated
+  subprocess runs. Includes Python startup and import overhead.
+- **Peak RSS**: `maximum resident set size` from `/usr/bin/time -l`,
+  minus baseline (bare `python -c ''`). Captures both Python and
+  C/C++ heap allocations.
 - **Benchmark script**: `scripts/benchmark_comparison.py`
 
 ## Large Deployment
