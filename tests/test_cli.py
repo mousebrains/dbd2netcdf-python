@@ -13,6 +13,8 @@ from pathlib import Path
 import pytest
 from conftest import CACHE_DIR, DBD_DIR, has_test_data
 
+from xarray_dbd import __version__
+
 
 def run_cli(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
     """Run a CLI command and return the result."""
@@ -126,7 +128,7 @@ def test_dbd2nc_version():
     result = run_cli(["xarray_dbd.cli.dbd2nc", "-V"])
     assert result.returncode == 0
     output = result.stdout + result.stderr
-    assert "0.1.0" in output
+    assert __version__ in output
 
 
 def test_dbd2nc_missing_output_arg():
@@ -853,7 +855,7 @@ def test_xdbd_version():
     result = run_cli(["xarray_dbd.cli.main", "-V"])
     assert result.returncode == 0
     output = result.stdout + result.stderr
-    assert "0.1.0" in output
+    assert __version__ in output
 
 
 # =============================================================================
