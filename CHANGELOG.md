@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Streaming NetCDF writer (`write_multi_dbd_netcdf`) for low-memory batch conversion
-- dbdreader-compatible API layer (`DBD` and `MultiDBD` classes in `xarray_dbd.compat`)
+- dbdreader-compatible API layer (`DBD` and `MultiDBD` classes in `xarray_dbd.dbdreader2`)
 - Unified CLI under `xdbd` command with subcommands (`2nc`, `mkone`, `2csv`, `missions`, `cache`)
 - Monotonicity check in `get_sync()` to prevent silent wrong results from `np.interp`
 

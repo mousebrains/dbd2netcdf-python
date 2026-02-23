@@ -174,7 +174,8 @@ Open multiple DBD files as a single concatenated xarray Dataset.
 ## Migration from dbdreader
 
 xarray-dbd provides drop-in `DBD` and `MultiDBD` classes that mirror the
-[dbdreader](https://pypi.org/project/dbdreader/) API:
+[dbdreader](https://pypi.org/project/dbdreader/) API. For a fully
+transparent swap, alias the import:
 
 ```python
 # Before (dbdreader)
@@ -186,30 +187,213 @@ mdbd = dbdreader.MultiDBD(filenames=files, cacheDir="cache")
 t, temp, sal = mdbd.get_sync("sci_water_temp", "sci_water_cond")
 
 # After (xarray-dbd) — same API
-import xarray_dbd as xdbd
-dbd = xdbd.DBD("file.dcd", cacheDir="cache")
+import xarray_dbd.dbdreader2 as dbdreader   # drop-in replacement
+dbd = dbdreader.DBD("file.dcd", cacheDir="cache")
 t, depth = dbd.get("m_depth")
 
-mdbd = xdbd.MultiDBD(filenames=files, cacheDir="cache")
+mdbd = dbdreader.MultiDBD(filenames=files, cacheDir="cache")
 t, temp, sal = mdbd.get_sync("sci_water_temp", "sci_water_cond")
 ```
 
-| Feature | xarray-dbd compat | dbdreader |
-|---------|-------------------|-----------|
+The top-level `xarray_dbd` namespace also re-exports `DBD` and `MultiDBD`
+for convenience:
+
+```python
+import xarray_dbd as xdbd
+dbd = xdbd.DBD("file.dcd", cacheDir="cache")
+```
+
+| Feature | xarray-dbd dbdreader2 | dbdreader |
+|---------|----------------------|-----------|
 | `get(*params)` | Yes | Yes |
 | `get_sync(*params)` | Yes (`np.interp`) | Yes (C ext) |
 | `parameterNames` | Yes | Yes |
 | `parameterUnits` | Yes | Yes |
 | `has_parameter()` | Yes | Yes |
-| `get_xy()`, `get_CTD_sync()` | No | Yes |
-| `decimalLatLon` | No (raw floats) | Yes |
+| `get_xy()`, `get_CTD_sync()` | Yes | Yes |
+| `decimalLatLon` | Yes | Yes |
+| `set_time_limits()` | Yes | Yes |
 | `include_source` | No | Yes |
-| `set_time_limits()` | No (use `keep_missions`) | Yes |
 
-The compat layer reads all data once on construction (fast single-pass
-C++ reader), so subsequent `get()` calls are instant lookups rather than
-re-reads. For the full xarray API, use `open_dbd_dataset()` /
-`open_multi_dbd_dataset()` directly.
+### Use-case examples
+
+**Single file — `get()` one or more parameters:**
+
+```python
+import xarray_dbd.dbdreader2 as dbdreader
+
+dbd = dbdreader.DBD("unit_123-2024-100-0-0.dcd", cacheDir="cache")
+
+# Single parameter → (time, values)
+t, depth = dbd.get("m_depth")
+
+# Multiple parameters → list of (time, values) tuples
+results = dbd.get("m_depth", "m_pitch", "m_roll")
+for t, v in results:
+    print(t.shape, v.shape)
+
+dbd.close()
+```
+
+**Synchronized reads — `get_sync()` and `get_xy()`:**
+
+```python
+# get_sync: all values interpolated onto the first parameter's time base
+t, depth, pitch = dbd.get_sync("m_depth", "m_pitch")
+
+# get_xy: y interpolated onto x's time base (returns x, y arrays)
+depth_vals, pitch_vals = dbd.get_xy("m_depth", "m_pitch")
+```
+
+**Multi-file — `MultiDBD`:**
+
+```python
+# Explicit file list
+mdbd = dbdreader.MultiDBD(filenames=["a.dcd", "b.dcd"], cacheDir="cache")
+
+# Or glob pattern
+mdbd = dbdreader.MultiDBD(pattern="/data/glider/*.dcd", cacheDir="cache")
+
+t, depth = mdbd.get("m_depth")
+print(f"{len(t)} records across {len(mdbd.filenames)} files")
+mdbd.close()
+```
+
+**CTD synchronization — `get_CTD_sync()`:**
+
+```python
+mdbd = dbdreader.MultiDBD(filenames=ebd_files, cacheDir="cache")
+tctd, C, T, P = mdbd.get_CTD_sync()
+# Or with extra parameters synced to the CTD time base:
+tctd, C, T, P, depth = mdbd.get_CTD_sync("m_depth")
+```
+
+**Time limits:**
+
+```python
+mdbd = dbdreader.MultiDBD(pattern="*.dcd", cacheDir="cache")
+print(mdbd.get_time_range())            # ['01 Jan 2024 00:00', '15 Jan 2024 23:59']
+
+mdbd.set_time_limits("5 Jan", "10 Jan")  # filter by file open time
+t, depth = mdbd.get("m_depth")           # only data from 5–10 Jan
+```
+
+**Mission filtering:**
+
+```python
+# Exclude specific missions
+mdbd = dbdreader.MultiDBD(
+    pattern="*.dcd", cacheDir="cache",
+    banned_missions=["initial.mi", "status.mi"],
+)
+
+# Or include only specific missions
+mdbd = dbdreader.MultiDBD(
+    pattern="*.dcd", cacheDir="cache",
+    missions=["science_survey.mi"],
+)
+print(mdbd.mission_list)  # unique mission names (sorted)
+```
+
+**Complement files — automatic eng/sci pairing:**
+
+```python
+# Pair each .dcd with its .ecd counterpart (or vice versa)
+mdbd = dbdreader.MultiDBD(
+    pattern="/data/*.dcd", cacheDir="cache",
+    complement_files=True,
+)
+# mdbd.parameterNames["eng"] + mdbd.parameterNames["sci"] both populated
+```
+
+### Key differences from dbdreader
+
+- **Read-once architecture.** All sensor data is loaded in a single C++
+  pass at construction time. Subsequent `get()` calls are instant numpy
+  slicing — no file re-reads. This means all sensors are in memory
+  regardless of which parameters you request via `get()`, so peak RSS
+  is higher than dbdreader for selective reads. Use the xarray API with
+  `to_keep` if memory is a concern.
+
+- **`skip_initial_line` semantics.** When reading multiple files, the
+  first contributing file keeps all its records; subsequent files skip
+  their first record. dbdreader skips the first record of every file.
+  Multi-file record counts may therefore differ by up to N-1.
+
+- **Native dtype preservation.** `get()` with `return_nans=False`
+  (the default) preserves the sensor's native dtype — int8 and int16
+  sensors return integer arrays rather than float64. dbdreader always
+  returns float64. Pass `return_nans=True` to get float64 output with
+  NaN fill values, matching dbdreader's behavior.
+
+- **Time limits are per-file.** `set_time_limits()` filters by file
+  open time, including or excluding entire files. It does not filter
+  individual records within a file. dbdreader also filters by file open
+  time, so this is operationally the same for most use cases.
+
+- **`include_source` not supported.** Passing `include_source=True` to
+  `get()` raises `NotImplementedError`.
+
+- **Error handling.** The same `DbdError` exception class and numeric
+  error codes (`DBD_ERROR_CACHE_NOT_FOUND`, etc.) are provided for
+  compatibility.
+
+### dbdreader2 API reference
+
+#### `DBD` — single file reader
+
+```python
+DBD(filename, cacheDir=None, skip_initial_line=True)
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `parameterNames` | `list[str]` | Available sensor names |
+| `parameterUnits` | `dict[str, str]` | `{sensor: unit}` mapping |
+| `timeVariable` | `str` | `"m_present_time"` or `"sci_m_present_time"` |
+| `filename` | `str` | Path to the opened file |
+| `headerInfo` | `dict` | Header key-value pairs |
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `get(*params, decimalLatLon=True, return_nans=False)` | `(t, v)` or `[(t, v), ...]` | Extract parameter data |
+| `get_sync(*params)` | `(t, v0, v1, ...)` | Interpolated to first param's time |
+| `get_xy(param_x, param_y)` | `(x, y)` | y interpolated onto x's time |
+| `has_parameter(name)` | `bool` | Check sensor availability |
+| `get_mission_name()` | `str` | Mission name (lowercase) |
+| `get_fileopen_time()` | `float` | File open time (epoch seconds) |
+| `close()` | — | Release stored data |
+
+#### `MultiDBD` — multi-file reader
+
+```python
+MultiDBD(
+    filenames=None, pattern=None, cacheDir=None,
+    complement_files=False, complemented_files_only=False,
+    banned_missions=(), missions=(),
+    max_files=None, skip_initial_line=True,
+)
+```
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `parameterNames` | `dict[str, list]` | `{"eng": [...], "sci": [...]}` |
+| `parameterUnits` | `dict[str, str]` | Union of eng + sci units |
+| `filenames` | `list[str]` | All loaded file paths |
+| `mission_list` | `list[str]` | Unique mission names (sorted) |
+| `time_limits_dataset` | `tuple` | `(min_time, max_time)` for full dataset |
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `get(*params, decimalLatLon=True, return_nans=False)` | `(t, v)` or `[(t, v), ...]` | Extract from combined eng+sci data |
+| `get_sync(*params, interpolating_function_factory=None)` | `(t, v0, v1, ...)` | Synced to first param's time |
+| `get_xy(x, y, interpolating_function_factory=None)` | `(x, y)` | y interpolated onto x's time |
+| `get_CTD_sync(*extra, interpolating_function_factory=None)` | `(t, C, T, P, ...)` | CTD-synced data with quality filters |
+| `has_parameter(name)` | `bool` | Check sensor availability |
+| `set_time_limits(minTimeUTC=None, maxTimeUTC=None)` | — | Filter by file open time; triggers reload |
+| `get_time_range(fmt=...)` | `[start, end]` | Formatted time range of current selection |
+| `get_global_time_range(fmt=...)` | `[start, end]` | Formatted time range of entire dataset |
+| `close()` | — | Release all data |
 
 ## Comparison with dbd2netCDF
 

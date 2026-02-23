@@ -73,6 +73,14 @@ def _run_bench(name: str, files: list[Path], cache_dir: str) -> None:
             pass
         dbd.close()
 
+    elif name == "xdbd_dbdr2_single_all":
+        from xarray_dbd.dbdreader2 import DBD
+
+        dbd = DBD(str(single_file), cacheDir=cache_dir)
+        params = [p for p in dbd.parameterNames if p != dbd.timeVariable]
+        dbd.get(*params)
+        dbd.close()
+
     elif name == "xdbd_single_filtered":
         import xarray_dbd as xdbd
 
@@ -100,6 +108,14 @@ def _run_bench(name: str, files: list[Path], cache_dir: str) -> None:
             dbd.get(*params)
         except Exception:
             pass
+        dbd.close()
+
+    elif name == "xdbd_dbdr2_single_filtered":
+        from xarray_dbd.dbdreader2 import DBD
+
+        dbd = DBD(str(single_file), cacheDir=cache_dir)
+        params = [p for p in SENSORS_SUBSET if p != dbd.timeVariable]
+        dbd.get(*params)
         dbd.close()
 
     elif name == "xdbd_multi_all":
@@ -132,10 +148,27 @@ def _run_bench(name: str, files: list[Path], cache_dir: str) -> None:
             pass
         mdbd.close()
 
+    elif name == "xdbd_dbdr2_multi_all":
+        from xarray_dbd.dbdreader2 import MultiDBD
+
+        mdbd = MultiDBD(filenames=[str(f) for f in files], cacheDir=cache_dir)
+        all_params = mdbd.parameterNames["eng"] + mdbd.parameterNames["sci"]
+        params = [p for p in all_params if p != "m_present_time"]
+        mdbd.get(*params)
+        mdbd.close()
+
     elif name == "xdbd_multi_filtered":
         import xarray_dbd as xdbd
 
         xdbd.open_multi_dbd_dataset(files, cache_dir=cache_dir, to_keep=SENSORS_SUBSET)
+
+    elif name == "xdbd_dbdr2_multi_filtered":
+        from xarray_dbd.dbdreader2 import MultiDBD
+
+        mdbd = MultiDBD(filenames=[str(f) for f in files], cacheDir=cache_dir)
+        params = [p for p in SENSORS_SUBSET if p != "m_present_time"]
+        mdbd.get(*params)
+        mdbd.close()
 
     elif name == "dbdreader_multi_filtered_individual":
         import dbdreader
@@ -352,6 +385,7 @@ def main() -> None:
     print(f"   File: {single_file.name}")
 
     run("xarray-dbd (open_dbd_dataset)", "xdbd_single_all", [single_file])
+    run("xarray-dbd dbdreader2 (DBD.get)", "xdbd_dbdr2_single_all", [single_file])
     run("dbdreader (get per sensor)", "dbdreader_single_all_individual", [single_file])
     run("dbdreader (get all at once)", "dbdreader_single_all_batch", [single_file])
     print()
@@ -363,6 +397,7 @@ def main() -> None:
     print(f"   Sensors: {SENSORS_SUBSET}")
 
     run("xarray-dbd (to_keep)", "xdbd_single_filtered", [single_file])
+    run("xarray-dbd dbdreader2 (DBD.get)", "xdbd_dbdr2_single_filtered", [single_file])
     run("dbdreader (get per sensor)", "dbdreader_single_filtered_individual", [single_file])
     run("dbdreader (get all at once)", "dbdreader_single_filtered_batch", [single_file])
     print()
@@ -373,6 +408,7 @@ def main() -> None:
     print("=" * 78)
 
     run("xarray-dbd (open_multi_dbd_dataset)", "xdbd_multi_all")
+    run("xarray-dbd dbdreader2 (MultiDBD.get)", "xdbd_dbdr2_multi_all")
     run("dbdreader (get per sensor)", "dbdreader_multi_all_individual")
     run("dbdreader (get all at once)", "dbdreader_multi_all_batch")
     print()
@@ -383,6 +419,7 @@ def main() -> None:
     print("=" * 78)
 
     run("xarray-dbd (to_keep)", "xdbd_multi_filtered")
+    run("xarray-dbd dbdreader2 (MultiDBD.get)", "xdbd_dbdr2_multi_filtered")
     run("dbdreader (get per sensor)", "dbdreader_multi_filtered_individual")
     run("dbdreader (get all at once)", "dbdreader_multi_filtered_batch")
     print()

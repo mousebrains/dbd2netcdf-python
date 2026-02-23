@@ -21,12 +21,12 @@ Best of 3 runs per scenario. dbdreader is tested two ways:
 
 ### Wall Time
 
-| Scenario | xarray-dbd | dbdreader (per sensor) | dbdreader (all at once) |
-|---|--:|--:|--:|
-| Single file, all sensors | **530 ms** | 560 ms | 470 ms |
-| Single file, 5 sensors | 460 ms | **410 ms** | 410 ms |
-| 18 files, all sensors | **620 ms** | 205 s | 8.4 s |
-| 18 files, 5 sensors | **600 ms** | 880 ms | 560 ms |
+| Scenario | xarray-dbd | xarray-dbd dbdreader2 | dbdreader (per sensor) | dbdreader (all at once) |
+|---|--:|--:|--:|--:|
+| Single file, all sensors | **540 ms** | 540 ms | 560 ms | 480 ms |
+| Single file, 5 sensors | 500 ms | 510 ms | **420 ms** | 430 ms |
+| 18 files, all sensors | **660 ms** | 740 ms | 207 s | 8.5 s |
+| 18 files, 5 sensors | **610 ms** | 770 ms | 960 ms | 590 ms |
 
 ### Peak RSS (above baseline)
 
@@ -35,12 +35,12 @@ subprocesses, minus the baseline RSS of `python -c ''` (~16 MB).
 Captures all memory including Python heap, C/C++ allocations, and
 shared libraries.
 
-| Scenario | xarray-dbd | dbdreader (per sensor) | dbdreader (all at once) |
-|---|--:|--:|--:|
-| Single file, all sensors | 120 MB | **59 MB** | 87 MB |
-| Single file, 5 sensors | 117 MB | **59 MB** | 59 MB |
-| 18 files, all sensors | 992 MB | **71 MB** | 323 MB |
-| 18 files, 5 sensors | 90 MB | **69 MB** | 72 MB |
+| Scenario | xarray-dbd | xarray-dbd dbdreader2 | dbdreader (per sensor) | dbdreader (all at once) |
+|---|--:|--:|--:|--:|
+| Single file, all sensors | 120 MB | 119 MB | **60 MB** | 87 MB |
+| Single file, 5 sensors | 120 MB | 118 MB | **59 MB** | 59 MB |
+| 18 files, all sensors | 993 MB | 1,140 MB | **71 MB** | 327 MB |
+| 18 files, 5 sensors | **91 MB** | 1,132 MB | 70 MB | 72 MB |
 
 ### Analysis
 
@@ -50,20 +50,29 @@ difference shows in multi-file scenarios: xarray-dbd reads all sensors
 in a single pass per file, so cost is proportional to data volume
 regardless of sensor count. dbdreader's `get()` re-opens and re-parses
 the binary file on every call — the per-sensor loop calls `get()` 1,705
-times across 18 files (205 s), while the batch approach re-parses each
-file only once (8.4 s). xarray-dbd is ~14x faster than even the batch
+times across 18 files (207 s), while the batch approach re-parses each
+file only once (8.5 s). xarray-dbd is ~11x faster than even the batch
 approach.
 
 **Memory.** xarray-dbd uses more memory because the C++ backend
 materializes all sensor columns simultaneously. For the 18-file,
-all-sensor case, xarray-dbd peaks at 992 MB (18,054 records x 1,706
+all-sensor case, xarray-dbd peaks at 993 MB (18,054 records x 1,706
 sensors in typed arrays). dbdreader's per-sensor approach stays at
 ~70 MB because each `get()` returns one sensor's data and Python can
-collect intermediates. The batch approach peaks at 323 MB since all
+collect intermediates. The batch approach peaks at 327 MB since all
 sensor arrays must coexist in memory.
 
-For filtered reads (5 sensors), xarray-dbd memory is modest (90 MB)
+For filtered reads (5 sensors), xarray-dbd memory is modest (91 MB)
 because the C++ backend discards non-matching columns early.
+
+**dbdreader2 compatibility layer.** The dbdreader2 wrapper adds
+negligible overhead to wall time — single-file timings are identical to
+the xarray API, and multi-file reads add only ~100 ms of Python
+wrapping. However, the dbdreader2 layer currently loads all sensors
+regardless of which parameters are requested via `get()`, so its peak
+RSS matches the all-sensor case even for filtered reads (1,132 MB vs
+91 MB). Users needing low-memory filtered reads should use the xarray
+API with `to_keep` instead.
 
 ## NetCDF Writer: C++ dbd2netCDF vs xdbd 2nc
 
