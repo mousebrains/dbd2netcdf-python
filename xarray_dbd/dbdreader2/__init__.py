@@ -46,6 +46,7 @@ __all__ = [
     "DBDCache",
     "DBDList",
     "DBDPatternSelect",
+    "_convertToDecimal",
     "DBD_ERROR_ALL_FILES_BANNED",
     "DBD_ERROR_CACHE_NOT_FOUND",
     "DBD_ERROR_CACHEDIR_NOT_FOUND",

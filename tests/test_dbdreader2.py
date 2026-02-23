@@ -553,7 +553,6 @@ class TestCrossValidation:
             f"length mismatch too large: {len(xt)} vs {len(dt)}"
         )
         # Values in common should match
-        n = min(len(xt), len(dt))
         # Find matching timestamps
         common_t = np.intersect1d(xt, dt)
         assert len(common_t) > 0
