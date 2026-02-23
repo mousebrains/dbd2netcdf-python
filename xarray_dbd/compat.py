@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import glob as _glob
 from pathlib import Path
-from typing import Any
 
 import numpy as np
+import xarray as xr
 
 from .backend import open_dbd_dataset, open_multi_dbd_dataset
 
@@ -29,7 +29,7 @@ __all__ = ["DBD", "MultiDBD"]
 _TIME_VARS = ("m_present_time", "sci_m_present_time")
 
 
-def _find_time_var(ds: Any) -> str | None:
+def _find_time_var(ds: xr.Dataset) -> str | None:
     """Return the first available time variable name in *ds*."""
     for name in _TIME_VARS:
         if name in ds:
@@ -37,7 +37,7 @@ def _find_time_var(ds: Any) -> str | None:
     return None
 
 
-def _extract(ds: Any, parameter: str, time_var: str, return_nans: bool) -> tuple:
+def _extract(ds: xr.Dataset, parameter: str, time_var: str, return_nans: bool) -> tuple:
     """Extract ``(time, values)`` for a single parameter."""
     if parameter not in ds:
         return np.array([], dtype=np.float64), np.array([], dtype=np.float64)
@@ -83,6 +83,8 @@ class DBD:
         Corresponds to ``skip_first_record`` (default True).
     """
 
+    _ds: xr.Dataset | None
+
     def __init__(
         self,
         filename: str | Path,
@@ -103,14 +105,14 @@ class DBD:
         """List of all sensor names in the file."""
         if self._ds is None:
             return []
-        return list(self._ds.data_vars)
+        return [str(n) for n in self._ds.data_vars]
 
     @property
     def parameterUnits(self) -> dict[str, str]:  # noqa: N802
         """Mapping of sensor name → unit string."""
         if self._ds is None:
             return {}
-        return {name: var.attrs.get("units", "") for name, var in self._ds.data_vars.items()}
+        return {str(n): v.attrs.get("units", "") for n, v in self._ds.data_vars.items()}
 
     # -- public methods ------------------------------------------------------
 
@@ -118,7 +120,7 @@ class DBD:
         """Return True if *name* is a known sensor."""
         if self._ds is None:
             return False
-        return name in self._ds
+        return name in self._ds.data_vars
 
     def get(self, *parameters: str, return_nans: bool = False) -> tuple | list[tuple]:
         """Extract time-series data for one or more parameters.
@@ -220,6 +222,8 @@ class MultiDBD:
         Corresponds to ``skip_first_record`` (default True).
     """
 
+    _ds: xr.Dataset | None
+
     def __init__(
         self,
         filenames: list[str] | None = None,
@@ -261,11 +265,12 @@ class MultiDBD:
             return {"eng": [], "sci": []}
         eng: list[str] = []
         sci: list[str] = []
-        for name in self._ds.data_vars:
-            if name.startswith("sci_"):
-                sci.append(name)
+        for n in self._ds.data_vars:
+            s = str(n)
+            if s.startswith("sci_"):
+                sci.append(s)
             else:
-                eng.append(name)
+                eng.append(s)
         return {"eng": eng, "sci": sci}
 
     @property
@@ -273,7 +278,7 @@ class MultiDBD:
         """Mapping of sensor name → unit string."""
         if self._ds is None:
             return {}
-        return {name: var.attrs.get("units", "") for name, var in self._ds.data_vars.items()}
+        return {str(n): v.attrs.get("units", "") for n, v in self._ds.data_vars.items()}
 
     # -- public methods ------------------------------------------------------
 
@@ -281,7 +286,7 @@ class MultiDBD:
         """Return True if *name* is a known sensor."""
         if self._ds is None:
             return False
-        return name in self._ds
+        return name in self._ds.data_vars
 
     def get(self, *parameters: str, return_nans: bool = False) -> tuple | list[tuple]:
         """Extract time-series data for one or more parameters.
