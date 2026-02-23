@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-02-23
+
+### Added
+
+- `include_source` support in `MultiDBD.get()` — returns per-record source DBD references, matching dbdreader's API
+- `continue_on_reading_error` parameter for `MultiDBD.get()` — skip corrupted files instead of raising, matching dbdreader v0.5.9
+- `DBD_ERROR_READ_ERROR` error code (14) for compatibility with dbdreader
+- Python 3.14 pre-built wheels for all platforms (Linux, macOS, Windows)
+- Attribution to Lucas Merckelbach's [dbdreader](https://github.com/smerckel/dbdreader) in README
+
+## [0.2.2] - 2026-02-23
+
+### Added
+
+- `preload` parameter for `DBD` and `MultiDBD` constructors
+- Changelog configuration and tag/version validation in publish workflow
+
+### Fixed
+
+- mypy errors: `datetime.UTC`, tuple assignments, type annotations
+- ruff formatting compliance
+
 ## [0.2.1] - 2026-02-22
 
 ### Added
