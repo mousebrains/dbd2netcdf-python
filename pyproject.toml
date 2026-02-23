@@ -135,7 +135,6 @@ python_files = "test_*.py"
 build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*"]
 skip = ["*-musllinux_i686", "*-win32", "pp*"]
 test-skip = ["*-manylinux_*", "*-musllinux_*"]
-enable = ["cpython-freethreading"]
 test-command = "python -c \"import xarray_dbd; print(xarray_dbd.__version__)\""
 build-verbosity = 1
 
