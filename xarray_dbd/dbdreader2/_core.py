@@ -275,7 +275,7 @@ class DBD:
         if len(sync_parameters) < 2:
             raise ValueError("Expect at least two parameters.")
         if len(sync_parameters) == 2 and isinstance(sync_parameters[1], (list, tuple)):
-            sync_parameters = [sync_parameters[0]] + list(sync_parameters[1])
+            sync_parameters = (sync_parameters[0], *sync_parameters[1])
         return self._get_sync(
             *sync_parameters,
             decimalLatLon=decimalLatLon,
@@ -548,7 +548,7 @@ class MultiDBD:
         if len(parameters) < 2:
             raise ValueError("Expect at least two parameters.")
         if len(parameters) == 2 and isinstance(parameters[1], (list, tuple)):
-            parameters = [parameters[0]] + list(parameters[1])
+            parameters = (parameters[0], *parameters[1])
 
         tv = self.get(
             *parameters,
@@ -697,7 +697,7 @@ class MultiDBD:
         self._sci_columns = {}
         self._loaded_eng_params = set()
         self._loaded_sci_params = set()
-        self.parameterNames = {"eng": [], "sci": []}
+        self.parameterNames: dict[str, list[str]] = {"eng": [], "sci": []}
         self.parameterUnits = {}
 
     @classmethod
@@ -726,8 +726,8 @@ class MultiDBD:
         self._sci_columns = {}
         self._eng_units: dict[str, str] = {}
         self._sci_units: dict[str, str] = {}
-        self._loaded_eng_params: set[str] = set()
-        self._loaded_sci_params: set[str] = set()
+        self._loaded_eng_params = set()
+        self._loaded_sci_params = set()
         self._eng_param_names: list[str] = []
         self._sci_param_names: list[str] = []
 
@@ -916,7 +916,7 @@ class MultiDBD:
         return t_epoch
 
     def _format_time(self, t, fmt):
-        tmp = datetime.datetime.fromtimestamp(t, datetime.UTC)
+        tmp = datetime.datetime.fromtimestamp(t, datetime.timezone.utc)
         return tmp.strftime(fmt)
 
     def _get_time_range(self, time_limits, fmt):

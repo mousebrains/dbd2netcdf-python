@@ -136,7 +136,7 @@ class DBDPatternSelect:
         open_times = numpy.array(list(self.cache.keys()))
         open_times = numpy.sort(open_times)
         selected_times = open_times.compress(numpy.logical_and(open_times >= t0, open_times <= t1))
-        fns = {self.cache[t] for t in selected_times}.intersection(all_fns)
-        fns = DBDList(fns)
+        fns_set = {self.cache[t] for t in selected_times}.intersection(all_fns)
+        fns = DBDList(fns_set)
         fns.sort()
         return fns
