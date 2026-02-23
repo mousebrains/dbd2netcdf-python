@@ -15,12 +15,28 @@ from xarray_dbd.dbdreader2 import (
     DBDCache,
     DbdError,
     DBDList,
+    DBDPatternSelect,
     MultiDBD,
     _convertToDecimal,
     epochToDateTimeStr,
     heading_interpolating_function_factory,
     strptimeToEpoch,
     toDec,
+)
+from xarray_dbd.dbdreader2._errors import (
+    DBD_ERROR_ALL_FILES_BANNED,
+    DBD_ERROR_CACHE_NOT_FOUND,
+    DBD_ERROR_CACHEDIR_NOT_FOUND,
+    DBD_ERROR_INVALID_DBD_FILE,
+    DBD_ERROR_INVALID_ENCODING,
+    DBD_ERROR_INVALID_FILE_CRITERION_SPECIFIED,
+    DBD_ERROR_NO_DATA,
+    DBD_ERROR_NO_DATA_TO_INTERPOLATE,
+    DBD_ERROR_NO_DATA_TO_INTERPOLATE_TO,
+    DBD_ERROR_NO_FILE_CRITERIUM_SPECIFIED,
+    DBD_ERROR_NO_FILES_FOUND,
+    DBD_ERROR_NO_TIME_VARIABLE,
+    DBD_ERROR_NO_VALID_PARAMETERS,
 )
 
 # ---------------------------------------------------------------------------
@@ -212,6 +228,86 @@ class TestDBD:
     def test_time_variable(self):
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
         assert dbd.timeVariable in ("m_present_time", "sci_m_present_time")
+        dbd.close()
+
+    def test_get_latlon_decimal(self):
+        """Lat/lon sensors are converted to decimal degrees by default."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        if not dbd.has_parameter("m_lat"):
+            dbd.close()
+            pytest.skip("No m_lat in test file")
+        t, v = dbd.get("m_lat")
+        assert len(t) > 0
+        # Decimal degrees should be < 90 for latitude
+        assert np.all(np.abs(v) <= 90)
+        dbd.close()
+
+    def test_get_latlon_no_decimal(self):
+        """With decimalLatLon=False, raw NMEA values are returned."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        if not dbd.has_parameter("m_lat"):
+            dbd.close()
+            pytest.skip("No m_lat in test file")
+        _, v_raw = dbd.get("m_lat", decimalLatLon=False)
+        _, v_dec = dbd.get("m_lat", decimalLatLon=True)
+        assert len(v_raw) > 0
+        # Raw NMEA values are larger (DDMM.MMM format)
+        assert np.max(np.abs(v_raw)) > np.max(np.abs(v_dec))
+        dbd.close()
+
+    def test_get_latlon_discard_bad(self):
+        """discardBadLatLon filters out-of-range lat/lon values."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        if not dbd.has_parameter("m_lat"):
+            dbd.close()
+            pytest.skip("No m_lat in test file")
+        t_keep, _ = dbd.get("m_lat", discardBadLatLon=True)
+        t_all, _ = dbd.get("m_lat", discardBadLatLon=False)
+        # Keeping bad values should give >= as many results
+        assert len(t_all) >= len(t_keep)
+        dbd.close()
+
+    def test_get_list_deprecated(self):
+        """get_list is a deprecated wrapper around get."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        t1, v1 = dbd.get("m_depth")
+        t2, v2 = dbd.get_list("m_depth")
+        np.testing.assert_array_equal(t1, t2)
+        np.testing.assert_array_equal(v1, v2)
+        dbd.close()
+
+    def test_get_sync_list_as_second_arg(self):
+        """get_sync accepts a list as the second argument."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        r1 = dbd.get_sync("m_depth", "m_pitch")
+        r2 = dbd.get_sync("m_depth", ["m_pitch"])
+        assert len(r1) == len(r2)
+        for a, b in zip(r1, r2, strict=True):
+            np.testing.assert_array_equal(a, b)
+        dbd.close()
+
+    def test_get_max_values_multi_param_raises(self):
+        """max_values_to_read with multiple parameters raises ValueError."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        with pytest.raises(ValueError, match="multiple parameters"):
+            dbd.get("m_depth", "m_pitch", max_values_to_read=10)
+        dbd.close()
+
+    def test_get_max_values_single_param(self):
+        """max_values_to_read limits output length."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        t, v = dbd.get("m_depth", max_values_to_read=5)
+        assert len(t) <= 5
+        assert len(v) <= 5
+        dbd.close()
+
+    def test_get_multiple_missing_params_raises(self):
+        """Multiple unknown parameters include all names in error message."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        with pytest.raises(DbdError) as exc_info:
+            dbd.get("no_sensor_a", "no_sensor_b")
+        assert "no_sensor_a" in str(exc_info.value)
+        assert "no_sensor_b" in str(exc_info.value)
         dbd.close()
 
 
@@ -465,6 +561,178 @@ class TestMultiDBD:
         assert not (dbd.cacheDir and os.path.isdir(dbd.cacheDir))
         dbd.close()
 
+    def test_get_latlon_multi(self):
+        """MultiDBD lat/lon path: decimal conversion applied."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        if not mdbd.has_parameter("m_lat"):
+            mdbd.close()
+            pytest.skip("No m_lat in test data")
+        t, v = mdbd.get("m_lat")
+        assert len(t) > 0
+        assert np.all(np.abs(v) <= 90)
+        mdbd.close()
+
+    def test_get_latlon_no_decimal_multi(self):
+        """MultiDBD with decimalLatLon=False returns raw NMEA values."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        if not mdbd.has_parameter("m_lat"):
+            mdbd.close()
+            pytest.skip("No m_lat in test data")
+        _, v_raw = mdbd.get("m_lat", decimalLatLon=False)
+        _, v_dec = mdbd.get("m_lat", decimalLatLon=True)
+        assert np.max(np.abs(v_raw)) > np.max(np.abs(v_dec))
+        mdbd.close()
+
+    def test_get_sync_list_as_second_arg_multi(self):
+        """MultiDBD.get_sync accepts a list as second argument."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        r1 = mdbd.get_sync("m_depth", "m_pitch")
+        r2 = mdbd.get_sync("m_depth", ["m_pitch"])
+        assert len(r1) == len(r2)
+        for a, b in zip(r1, r2, strict=True):
+            np.testing.assert_array_equal(a, b)
+        mdbd.close()
+
+    def test_get_sync_with_interpolating_function_factory(self):
+        """MultiDBD.get_sync with custom interpolating_function_factory."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        result = mdbd.get_sync(
+            "m_depth",
+            "m_heading",
+            interpolating_function_factory=heading_interpolating_function_factory,
+        )
+        assert isinstance(result, tuple)
+        assert len(result) == 3
+        t, v0, v1 = result
+        assert len(t) == len(v0) == len(v1)
+        mdbd.close()
+
+    def test_get_sync_with_interpolating_dict(self):
+        """MultiDBD.get_sync with dict-based interpolating_function_factory."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        factory = {"m_heading": heading_interpolating_function_factory}
+        result = mdbd.get_sync(
+            "m_depth",
+            "m_heading",
+            "m_pitch",
+            interpolating_function_factory=factory,
+        )
+        assert isinstance(result, tuple)
+        assert len(result) == 4
+        mdbd.close()
+
+    def test_get_invalid_param_single_multi(self):
+        """MultiDBD: single invalid param message."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        with pytest.raises(DbdError) as exc_info:
+            mdbd.get("no_such_sensor")
+        assert "no_such_sensor" in str(exc_info.value)
+        mdbd.close()
+
+    def test_get_invalid_params_multiple_multi(self):
+        """MultiDBD: multiple invalid params message."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        with pytest.raises(DbdError) as exc_info:
+            mdbd.get("no_sensor_a", "no_sensor_b")
+        assert "no_sensor_a" in str(exc_info.value)
+        assert "no_sensor_b" in str(exc_info.value)
+        mdbd.close()
+
+    def test_get_max_values_multi_raises(self):
+        """MultiDBD: max_values_to_read with multiple params raises."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        with pytest.raises(ValueError, match="multiple parameters"):
+            mdbd.get("m_depth", "m_pitch", max_values_to_read=10)
+        mdbd.close()
+
+    def test_get_max_values_single_multi(self):
+        """MultiDBD: max_values_to_read limits output."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        t, v = mdbd.get("m_depth", max_values_to_read=5)
+        assert len(t) <= 5
+        mdbd.close()
+
+    def test_complement_files(self):
+        """complement_files adds paired eng/sci files to the file list."""
+        # Use .dcd files — counterpart is .ecd, both compressed and in test data
+        dcd_files = _all_files()[:3]
+        for fn in dcd_files:
+            mfn = MultiDBD._get_matching_fn(fn)
+            assert mfn.endswith(".ecd")
+            assert os.path.exists(mfn), f"Expected counterpart {mfn} not found"
+
+    def test_complemented_files_only(self):
+        """complemented_files_only prunes files without a counterpart."""
+        fns = DBDList(["a.dbd", "a.ebd", "b.dbd"])
+        fn_set = set(fns)
+        to_remove = [fn for fn in fns if MultiDBD._get_matching_fn(fn) not in fn_set]
+        for fn in to_remove:
+            fns.remove(fn)
+        # "b.dbd" has no "b.ebd" counterpart so it's removed
+        assert "a.dbd" in fns
+        assert "a.ebd" in fns
+        assert "b.dbd" not in fns
+
+    def test_banned_missions(self):
+        """banned_missions excludes files from that mission."""
+        mdbd_all = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        missions = mdbd_all.mission_list
+        n_all = len(mdbd_all.filenames)
+        mdbd_all.close()
+
+        if len(missions) < 1:
+            pytest.skip("Only one mission in test data")
+
+        mdbd_ban = MultiDBD(
+            filenames=_all_files(),
+            cacheDir=CACHE_DIR,
+            banned_missions=[missions[0]],
+        )
+        assert len(mdbd_ban.filenames) < n_all
+        mdbd_ban.close()
+
+    def test_convert_seconds_bad_format_raises(self):
+        """_convert_seconds raises ValueError on unparseable time string."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        with pytest.raises(ValueError, match="Could not convert"):
+            mdbd._convert_seconds("not-a-date")
+        mdbd.close()
+
+    def test_set_time_limits_max_only(self):
+        """set_time_limits with only maxTimeUTC."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        t_min, t_max = mdbd.time_limits_dataset
+        mid = (t_min + t_max) / 2
+        mdbd.set_time_limits(maxTimeUTC=mdbd._format_time(mid, "%d %b %Y %H:%M"))
+        assert mdbd.time_limits[1] is not None
+        mdbd.close()
+
+    def test_string_filenames_as_pattern(self):
+        """Passing a string as filenames uses it as a pattern if pattern is None."""
+        pattern = str(DBD_DIR / "*.dcd")
+        mdbd = MultiDBD(filenames=pattern, cacheDir=CACHE_DIR)
+        assert len(mdbd.filenames) > 0
+        mdbd.close()
+
+    def test_string_filenames_with_pattern_raises(self):
+        """String filenames + string pattern raises."""
+        with pytest.raises(DbdError):
+            MultiDBD(filenames="*.dcd", pattern="*.dcd", cacheDir=CACHE_DIR)
+
+    def test_get_matching_fn_eng_to_sci(self):
+        """_get_matching_fn converts eng extension to sci."""
+        assert MultiDBD._get_matching_fn("test.dbd").endswith(".ebd")
+        assert MultiDBD._get_matching_fn("test.dcd").endswith(".ecd")
+        assert MultiDBD._get_matching_fn("test.sbd").endswith(".tbd")
+
+    def test_get_matching_fn_sci_to_eng(self):
+        """_get_matching_fn converts sci extension to eng."""
+        assert MultiDBD._get_matching_fn("test.ebd").endswith(".dbd")
+        assert MultiDBD._get_matching_fn("test.ecd").endswith(".dcd")
+        assert MultiDBD._get_matching_fn("test.tbd").endswith(".sbd")
+        assert MultiDBD._get_matching_fn("test.nbd").endswith(".mbd")
+        assert MultiDBD._get_matching_fn("test.ncd").endswith(".mcd")
+
 
 # ---------------------------------------------------------------------------
 # TestCrossValidation — compare against dbdreader if available
@@ -641,6 +909,190 @@ class TestDBDList:
         fns = DBDList(["b.dbd", "a.dbd"])
         fns.sort()
         assert fns == ["a.dbd", "b.dbd"]
+
+    def test_sort_slocum_filenames(self):
+        """Slocum-style filenames sort chronologically via _keyFilename."""
+        fns = DBDList([
+            "unit_123-2024-100-3-43.dbd",
+            "unit_123-2024-100-3-42.dbd",
+            "unit_123-2024-100-4-0.dbd",
+            "unit_123-2024-99-5-10.dbd",
+        ])
+        fns.sort()
+        # Day 99 < 100, and within day 100: segment 42 < 43 < segment 4-0
+        assert fns[0] == "unit_123-2024-99-5-10.dbd"
+        assert fns[1] == "unit_123-2024-100-3-42.dbd"
+        assert fns[2] == "unit_123-2024-100-3-43.dbd"
+        assert fns[3] == "unit_123-2024-100-4-0.dbd"
+
+    def test_sort_mixed_extensions(self):
+        """Slocum ebd and dbd files sort correctly."""
+        fns = DBDList([
+            "unit_1-2024-100-3-42.ebd",
+            "unit_1-2024-100-3-42.dbd",
+        ])
+        fns.sort()
+        # Same numeric key, sort by extension (dbd < ebd)
+        assert fns[0].endswith(".dbd")
+        assert fns[1].endswith(".ebd")
+
+    def test_sort_reverse(self):
+        fns = DBDList(["a.dbd", "b.dbd"])
+        fns.sort(reverse=True)
+        assert fns == ["b.dbd", "a.dbd"]
+
+
+# ---------------------------------------------------------------------------
+# TestDbdError — __str__ coverage
+# ---------------------------------------------------------------------------
+
+
+class TestDbdError:
+    @pytest.mark.parametrize(
+        ("code", "expected_substr"),
+        [
+            (DBD_ERROR_NO_VALID_PARAMETERS, "requested parameter"),
+            (DBD_ERROR_NO_TIME_VARIABLE, "time variable"),
+            (DBD_ERROR_CACHE_NOT_FOUND, "Cache file"),
+            (DBD_ERROR_NO_FILE_CRITERIUM_SPECIFIED, "No file specification"),
+            (DBD_ERROR_NO_FILES_FOUND, "No files were found"),
+            (DBD_ERROR_NO_DATA_TO_INTERPOLATE_TO, "No data to interpolate to"),
+            (DBD_ERROR_CACHEDIR_NOT_FOUND, "Cache file directory"),
+            (DBD_ERROR_ALL_FILES_BANNED, "All data files were banned"),
+            (DBD_ERROR_INVALID_DBD_FILE, "Invalid DBD file"),
+            (DBD_ERROR_INVALID_ENCODING, "Invalid encoding"),
+            (DBD_ERROR_INVALID_FILE_CRITERION_SPECIFIED, "Invalid or conflicting"),
+            (DBD_ERROR_NO_DATA_TO_INTERPOLATE, "does/do not have any data"),
+            (DBD_ERROR_NO_DATA, "do not have any data"),
+        ],
+    )
+    def test_error_messages(self, code, expected_substr):
+        err = DbdError(code)
+        assert expected_substr in str(err)
+
+    def test_undefined_error_code(self):
+        err = DbdError(value=999)
+        assert "Undefined error" in str(err)
+        assert "999" in str(err)
+
+    def test_custom_mesg_appended(self):
+        err = DbdError(value=DBD_ERROR_NO_VALID_PARAMETERS, mesg="extra detail")
+        s = str(err)
+        assert "requested parameter" in s
+        assert "extra detail" in s
+
+    def test_data_attribute(self):
+        err = DbdError(value=DBD_ERROR_NO_VALID_PARAMETERS, data=["sensor_a"])
+        assert err.data == ["sensor_a"]
+
+
+# ---------------------------------------------------------------------------
+# TestDBDPatternSelect
+# ---------------------------------------------------------------------------
+
+
+class TestDBDPatternSelect:
+    @pytest.fixture(autouse=True)
+    def _set_cachedir(self):
+        """Ensure DBDCache.CACHEDIR points to test cache for DBDPatternSelect."""
+        old = DBDCache.CACHEDIR
+        DBDCache.CACHEDIR = CACHE_DIR
+        yield
+        DBDCache.CACHEDIR = old
+
+    def test_construction(self):
+        ps = DBDPatternSelect(cacheDir=CACHE_DIR)
+        assert ps.date_format == "%d %m %Y"
+        assert ps.cacheDir == CACHE_DIR
+
+    def test_set_get_date_format(self):
+        ps = DBDPatternSelect()
+        ps.set_date_format("%Y-%m-%d")
+        assert ps.get_date_format() == "%Y-%m-%d"
+
+    def test_get_filenames_pattern(self):
+        ps = DBDPatternSelect(cacheDir=CACHE_DIR)
+        pattern = str(DBD_DIR / "*.dcd")
+        fns = ps.get_filenames(pattern=pattern, filenames=(), cacheDir=CACHE_DIR)
+        assert len(fns) > 0
+        assert isinstance(fns, DBDList)
+
+    def test_get_filenames_list(self):
+        ps = DBDPatternSelect(cacheDir=CACHE_DIR)
+        files = _all_files()
+        fns = ps.get_filenames(pattern=None, filenames=files, cacheDir=CACHE_DIR)
+        assert len(fns) == len(files)
+
+    def test_get_filenames_no_args_raises(self):
+        ps = DBDPatternSelect()
+        with pytest.raises(ValueError, match="Expected some pattern"):
+            ps.get_filenames(pattern=None, filenames=())
+
+    def test_select_no_date_filter(self):
+        ps = DBDPatternSelect(cacheDir=CACHE_DIR)
+        pattern = str(DBD_DIR / "*.dcd")
+        fns = ps.select(pattern=pattern)
+        assert len(fns) > 0
+
+    def test_select_with_date_filter(self):
+        ps = DBDPatternSelect(date_format="%d %b %Y", cacheDir=CACHE_DIR)
+        pattern = str(DBD_DIR / "*.dcd")
+        # Get all files first to know the time range
+        all_fns = ps.select(pattern=pattern)
+        assert len(all_fns) > 0
+        # Filter with a very wide range should return all
+        fns_wide = ps.select(
+            pattern=pattern,
+            from_date="01 Jan 2000",
+            until_date="01 Jan 2100",
+        )
+        assert len(fns_wide) == len(all_fns)
+        # Filter with a very narrow range in the past should return none
+        fns_narrow = ps.select(
+            pattern=pattern,
+            from_date="01 Jan 1990",
+            until_date="02 Jan 1990",
+        )
+        assert len(fns_narrow) == 0
+
+    def test_bins(self):
+        ps = DBDPatternSelect(cacheDir=CACHE_DIR)
+        pattern = str(DBD_DIR / "*.dcd")
+        ps.get_filenames(pattern=pattern, filenames=(), cacheDir=CACHE_DIR)
+        # Use a very large bin size to get one bin
+        bins = ps.bins(pattern=pattern, binsize=10 * 365 * 86400)
+        assert isinstance(bins, list)
+        assert len(bins) >= 1
+        center, fns = bins[0]
+        assert isinstance(center, float)
+        assert isinstance(fns, DBDList)
+
+
+# ---------------------------------------------------------------------------
+# TestDBDCache
+# ---------------------------------------------------------------------------
+
+
+class TestDBDCache:
+    def test_set_cachedir_nonexistent_raises(self):
+        with pytest.raises(DbdError):
+            DBDCache.set_cachedir("/nonexistent/path/xyz")
+
+    def test_set_cachedir_valid(self):
+        old = DBDCache.CACHEDIR
+        try:
+            DBDCache.set_cachedir(CACHE_DIR)
+            assert DBDCache.CACHEDIR == CACHE_DIR
+        finally:
+            DBDCache.CACHEDIR = old
+
+    def test_init_with_explicit_cachedir(self):
+        old = DBDCache.CACHEDIR
+        try:
+            DBDCache(cachedir=CACHE_DIR)
+            assert DBDCache.CACHEDIR == CACHE_DIR
+        finally:
+            DBDCache.CACHEDIR = old
 
 
 # ---------------------------------------------------------------------------
