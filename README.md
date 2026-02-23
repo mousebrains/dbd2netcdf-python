@@ -312,7 +312,8 @@ mdbd = dbdreader.MultiDBD(
   sensor metadata — no data records are read. Each `get()` call loads
   only the newly-requested columns (plus the time variable) and caches
   them for future calls. This keeps peak RSS proportional to the sensors
-  you actually use, not the total sensor count.
+  you actually use, not the total sensor count. Pass `preload=["s1", "s2"]`
+  to batch additional sensors into the first `get()` call.
 
 - **`skip_initial_line` semantics.** When reading multiple files, the
   first contributing file keeps all its records; subsequent files skip
@@ -341,7 +342,7 @@ mdbd = dbdreader.MultiDBD(
 #### `DBD` — single file reader
 
 ```python
-DBD(filename, cacheDir=None, skip_initial_line=True)
+DBD(filename, cacheDir=None, skip_initial_line=True, preload=None)
 ```
 
 | Property | Type | Description |
@@ -369,7 +370,7 @@ MultiDBD(
     filenames=None, pattern=None, cacheDir=None,
     complement_files=False, complemented_files_only=False,
     banned_missions=(), missions=(),
-    max_files=None, skip_initial_line=True,
+    max_files=None, skip_initial_line=True, preload=None,
 )
 ```
 
