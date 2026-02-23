@@ -122,8 +122,8 @@ def xdbd_single_all():
     return xdbd.open_dbd_dataset(single_file, cache_dir=args.cache)
 
 
-# dbdreader — read all parameters to get equivalent data
-def dbdreader_single_all():
+# dbdreader — read all parameters one at a time (re-parses file per sensor)
+def dbdreader_single_all_individual():
     dbd = dbdreader.DBD(str(single_file), cacheDir=cache_dir)
     params = [p for p in dbd.parameterNames if p != "m_present_time"]
     data = {}
@@ -137,8 +137,22 @@ def dbdreader_single_all():
     return data
 
 
+# dbdreader — read all parameters in a single get() call (one file parse)
+def dbdreader_single_all_batch():
+    dbd = dbdreader.DBD(str(single_file), cacheDir=cache_dir)
+    params = [p for p in dbd.parameterNames if p != "m_present_time"]
+    try:
+        results = dbd.get(*params)
+        data = dict(zip(params, results))
+    except Exception:
+        data = {}
+    dbd.close()
+    return data
+
+
 bench("xarray-dbd (open_dbd_dataset)", xdbd_single_all)
-bench("dbdreader (DBD + get per sensor)", dbdreader_single_all)
+bench("dbdreader (get per sensor)", dbdreader_single_all_individual)
+bench("dbdreader (get all at once)", dbdreader_single_all_batch)
 print()
 
 
@@ -154,7 +168,7 @@ def xdbd_single_filtered():
     return xdbd.open_dbd_dataset(single_file, cache_dir=args.cache, to_keep=SENSORS_SUBSET)
 
 
-def dbdreader_single_filtered():
+def dbdreader_single_filtered_individual():
     dbd = dbdreader.DBD(str(single_file), cacheDir=cache_dir)
     data = {}
     for p in SENSORS_SUBSET:
@@ -169,8 +183,21 @@ def dbdreader_single_filtered():
     return data
 
 
+def dbdreader_single_filtered_batch():
+    dbd = dbdreader.DBD(str(single_file), cacheDir=cache_dir)
+    params = [p for p in SENSORS_SUBSET if p != "m_present_time"]
+    try:
+        results = dbd.get(*params)
+        data = dict(zip(params, results))
+    except Exception:
+        data = {}
+    dbd.close()
+    return data
+
+
 bench("xarray-dbd (to_keep)", xdbd_single_filtered)
-bench("dbdreader (get per sensor)", dbdreader_single_filtered)
+bench("dbdreader (get per sensor)", dbdreader_single_filtered_individual)
+bench("dbdreader (get all at once)", dbdreader_single_filtered_batch)
 print()
 
 
@@ -185,7 +212,7 @@ def xdbd_multi_all():
     return xdbd.open_multi_dbd_dataset(files, cache_dir=args.cache)
 
 
-def dbdreader_multi_all():
+def dbdreader_multi_all_individual():
     try:
         mdbd = dbdreader.MultiDBD(
             filenames=[str(f) for f in files],
@@ -207,8 +234,29 @@ def dbdreader_multi_all():
     return data
 
 
+def dbdreader_multi_all_batch():
+    try:
+        mdbd = dbdreader.MultiDBD(
+            filenames=[str(f) for f in files],
+            cacheDir=cache_dir,
+        )
+    except Exception as e:
+        print(f"  dbdreader MultiDBD failed: {e}")
+        return None
+    all_params = mdbd.parameterNames["eng"] + mdbd.parameterNames["sci"]
+    params = [p for p in all_params if p != "m_present_time"]
+    try:
+        results = mdbd.get(*params)
+        data = dict(zip(params, results))
+    except Exception:
+        data = {}
+    mdbd.close()
+    return data
+
+
 bench("xarray-dbd (open_multi_dbd_dataset)", xdbd_multi_all)
-bench("dbdreader (MultiDBD + get per sensor)", dbdreader_multi_all)
+bench("dbdreader (get per sensor)", dbdreader_multi_all_individual)
+bench("dbdreader (get all at once)", dbdreader_multi_all_batch)
 print()
 
 
@@ -223,7 +271,7 @@ def xdbd_multi_filtered():
     return xdbd.open_multi_dbd_dataset(files, cache_dir=args.cache, to_keep=SENSORS_SUBSET)
 
 
-def dbdreader_multi_filtered():
+def dbdreader_multi_filtered_individual():
     try:
         mdbd = dbdreader.MultiDBD(
             filenames=[str(f) for f in files],
@@ -245,8 +293,28 @@ def dbdreader_multi_filtered():
     return data
 
 
+def dbdreader_multi_filtered_batch():
+    try:
+        mdbd = dbdreader.MultiDBD(
+            filenames=[str(f) for f in files],
+            cacheDir=cache_dir,
+        )
+    except Exception as e:
+        print(f"  dbdreader MultiDBD failed: {e}")
+        return None
+    params = [p for p in SENSORS_SUBSET if p != "m_present_time"]
+    try:
+        results = mdbd.get(*params)
+        data = dict(zip(params, results))
+    except Exception:
+        data = {}
+    mdbd.close()
+    return data
+
+
 bench("xarray-dbd (to_keep)", xdbd_multi_filtered)
-bench("dbdreader (MultiDBD + get per sensor)", dbdreader_multi_filtered)
+bench("dbdreader (get per sensor)", dbdreader_multi_filtered_individual)
+bench("dbdreader (get all at once)", dbdreader_multi_filtered_batch)
 print()
 
 

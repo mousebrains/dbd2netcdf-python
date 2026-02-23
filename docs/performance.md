@@ -15,14 +15,16 @@ glider Dinkum Binary Data (DBD) files.
 
 ## Wall Time
 
-Best of 3 runs per scenario.
+Best of 3 runs per scenario. dbdreader is tested two ways:
+- **per sensor**: calls `get()` once per variable in a loop (re-parses the file each time)
+- **all at once**: calls `get(*params)` with all variables unpacked (single file parse per call)
 
-| Scenario | xarray-dbd | dbdreader | |
-|---|--:|--:|---|
-| Single file, all sensors | **19 ms** | 149 ms | xarray-dbd 8x faster |
-| Single file, 5 sensors | 5 ms | **2 ms** | dbdreader 2.5x faster |
-| 18 files, all sensors | **113 ms** | 212 s | xarray-dbd 1,900x faster |
-| 18 files, 5 sensors | **34 ms** | 502 ms | xarray-dbd 15x faster |
+| Scenario | xarray-dbd | dbdreader (per sensor) | dbdreader (all at once) |
+|---|--:|--:|--:|
+| Single file, all sensors | **47 ms** | 187 ms | 383 ms |
+| Single file, 5 sensors | 6 ms | 7 ms | **6 ms** |
+| 18 files, all sensors | **105 ms** | 208 s | 20.1 s |
+| 18 files, 5 sensors | **32 ms** | 705 ms | 364 ms |
 
 ### Analysis
 
@@ -31,17 +33,23 @@ data record is decoded once and each sensor value is stored into a
 pre-allocated typed column. This makes whole-dataset access very fast
 regardless of sensor count.
 
-dbdreader's `get()` re-reads the file for each requested sensor, using
-`fseek()` to skip bytes for sensors not being read. This means cost
-scales as **N_sensors x N_files**. For the 18-file, all-sensor scenario,
-dbdreader calls `get()` 1,705 times across 18 files — hence the ~212 s
-wall time vs. xarray-dbd's 113 ms.
+dbdreader's `get()` accepts multiple sensor names and extracts them
+all in a single file parse via its C extension. However, there is no
+data caching — each call to `get()` re-opens and re-parses the binary
+file from scratch. For the per-sensor loop, cost scales as
+**N_sensors x N_files**. For the 18-file, all-sensor scenario, the
+per-sensor approach calls `get()` 1,705 times across 18 files (208 s),
+while the batch approach re-parses each file only once (20.1 s).
+xarray-dbd is still ~190x faster than even the batch approach.
 
-For extracting a small number of sensors from a single file, dbdreader
-is faster because it seeks past unneeded bytes rather than decoding
-them. xarray-dbd always decodes all sensors (even when `to_keep` is
-set) to maintain binary stream alignment, then discards the unwanted
-columns.
+For the single-file all-sensor case, dbdreader's batch `get()` is
+actually slower than the per-sensor loop (383 ms vs 187 ms), likely
+due to overhead of returning all sensor arrays at once.
+
+For extracting a small number of sensors from a single file, all three
+approaches are comparable (~6-7 ms). xarray-dbd always decodes all
+sensors (even when `to_keep` is set) to maintain binary stream
+alignment, then discards the unwanted columns.
 
 ## Memory (RSS)
 
