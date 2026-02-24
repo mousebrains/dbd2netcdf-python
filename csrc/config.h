@@ -3,7 +3,7 @@
 #ifndef INC_CONFIG_H_
 #define INC_CONFIG_H_
 
-#define VERSION "1.6.10"
+#define VERSION "1.7.0"
 #define MAINTAINER "pat@mousebrains.com"
 
 #define HAVE_INT8_T
