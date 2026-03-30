@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from xarray_dbd._dbd_cpp import read_dbd_file, scan_sensors
+from xarray_dbd.backend import _sort_by_header_time
 from xarray_dbd.cli import logger
 from xarray_dbd.cli.dbd2nc import read_sensor_list
 
@@ -78,6 +79,12 @@ def _add_common_args(parser) -> None:
         action="store_true",
         help="Attempt to repair bad data records",
     )
+    parser.add_argument(
+        "--sort",
+        choices=("lexicographic", "header_time", "none"),
+        default="lexicographic",
+        help="File sort order (default: lexicographic)",
+    )
     logger.add_args(parser)
 
 
@@ -122,7 +129,13 @@ def run(args) -> int:
         logging.warning("Cache directory not found: %s", cache_dir)
         cache_dir = None
 
-    file_list = sorted(str(f) for f in args.files)
+    file_list = [str(f) for f in args.files]
+    if args.sort == "lexicographic":
+        file_list.sort()
+    elif args.sort == "header_time":
+        file_list = _sort_by_header_time(file_list)
+    # sort == "none": preserve caller's order
+
     cache_str = str(cache_dir) if cache_dir else ""
 
     # Pass 1: discover union sensor list and valid files

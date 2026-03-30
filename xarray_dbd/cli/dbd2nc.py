@@ -97,6 +97,12 @@ def _add_common_args(parser) -> None:
         metavar="level",
         help="NetCDF compression level 1-9 (default: 5, <=0 to disable)",
     )
+    parser.add_argument(
+        "--sort",
+        choices=("lexicographic", "header_time", "none"),
+        default="lexicographic",
+        help="File sort order (default: lexicographic)",
+    )
     logger.add_args(parser)
 
 
@@ -170,6 +176,7 @@ def run(args) -> int:
                 skip_missions=args.skip_mission,
                 keep_missions=args.keep_mission,
                 cache_dir=cache_dir,
+                sort=args.sort,
             )
             logging.info("Read %d records, %d variables", len(ds.i), len(ds.data_vars))
             logging.info("Appending to %s", args.output)
@@ -211,6 +218,7 @@ def run(args) -> int:
                     keep_missions=args.keep_mission,
                     cache_dir=cache_dir,
                     compression=args.compression,
+                    sort=args.sort,
                 )
                 logging.info("Wrote %d records from %d files", n_records, n_files)
             else:
@@ -225,6 +233,7 @@ def run(args) -> int:
                     skip_missions=args.skip_mission,
                     keep_missions=args.keep_mission,
                     cache_dir=cache_dir,
+                    sort=args.sort,
                 )
                 ds.to_netcdf(str(args.output), encoding=_nc_encoding(ds, args.compression))
 

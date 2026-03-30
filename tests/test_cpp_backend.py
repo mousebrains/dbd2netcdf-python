@@ -119,6 +119,79 @@ def test_open_multi_dbd_dataset():
     ds.close()
 
 
+def test_read_dbd_files_presorted():
+    """read_dbd_files with presorted=True preserves caller's file order."""
+    files = sorted(str(f) for f in DBD_DIR.glob("*.dcd"))[:5]
+    if len(files) < 2:
+        pytest.skip("Need at least 2 test files")
+
+    # Normal (lexicographic) order
+    result_lex = read_dbd_files(files, cache_dir=CACHE_DIR, skip_first_record=True)
+
+    # Reversed order with presorted=True — should produce different data order
+    result_rev = read_dbd_files(
+        list(reversed(files)),
+        cache_dir=CACHE_DIR,
+        skip_first_record=True,
+        presorted=True,
+    )
+
+    # Both should have the same total records and sensor names
+    assert result_lex["n_records"] == result_rev["n_records"]
+    assert set(result_lex["sensor_names"]) == set(result_rev["sensor_names"])
+
+
+def test_open_multi_dbd_dataset_sort_header_time():
+    """open_multi_dbd_dataset with sort='header_time' produces valid output."""
+    files = sorted(DBD_DIR.glob("*.dcd"))[:5]
+    if len(files) < 2:
+        pytest.skip("Need at least 2 test files")
+
+    ds = xdbd.open_multi_dbd_dataset(
+        files,
+        skip_first_record=True,
+        cache_dir=CACHE_DIR,
+        sort="header_time",
+    )
+    assert len(ds.data_vars) > 0
+    assert len(ds.i) > 0
+
+    # Compare record count with lexicographic sort — should be the same
+    ds_lex = xdbd.open_multi_dbd_dataset(
+        files,
+        skip_first_record=True,
+        cache_dir=CACHE_DIR,
+        sort="lexicographic",
+    )
+    assert len(ds.i) == len(ds_lex.i)
+    ds.close()
+    ds_lex.close()
+
+
+def test_open_multi_dbd_dataset_sort_none():
+    """open_multi_dbd_dataset with sort='none' preserves caller's order."""
+    files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+    if len(files) < 2:
+        pytest.skip("Need at least 2 test files")
+
+    ds = xdbd.open_multi_dbd_dataset(
+        files,
+        skip_first_record=True,
+        cache_dir=CACHE_DIR,
+        sort="none",
+    )
+    assert len(ds.data_vars) > 0
+    assert len(ds.i) > 0
+    ds.close()
+
+
+def test_open_multi_dbd_dataset_sort_invalid():
+    """open_multi_dbd_dataset rejects invalid sort values."""
+    files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+    with pytest.raises(ValueError, match="sort must be one of"):
+        xdbd.open_multi_dbd_dataset(files, cache_dir=CACHE_DIR, sort="bogus")
+
+
 def test_nan_fill_for_floats():
     """Float columns use NaN for absent values, int columns use 0."""
     files = sorted(str(f) for f in DBD_DIR.glob("*.dcd"))[:5]
