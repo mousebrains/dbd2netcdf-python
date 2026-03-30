@@ -12,10 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sort` parameter for `open_multi_dbd_dataset()` and `write_multi_dbd_netcdf()` with three modes: `"header_time"` (default, sort by `fileopen_time` from each file's DBD header), `"lexicographic"`, and `"none"` (preserve caller's order)
 - `--sort` CLI flag for `dbd2nc`, `mkone`, and `2csv` commands
 - `presorted` parameter for `read_dbd_files()` C++ binding to skip internal lexicographic sort when files are pre-sorted by Python
+- `sensor_size` attribute on variables from `open_multi_dbd_dataset()`, matching single-file behavior
+- `--skip-first` flag for `mkone` as consistent alias for the inverse `--keep-first`
+- Duplicate file detection and deduplication with warning in multi-file functions
+- Output directory auto-creation in `write_multi_dbd_netcdf()`
+- "Choosing an API" and "Slocum File Types" sections in README
+- Fill value and CF-compliance guidance in README Known Limitations
+
+### Changed
+
+- `skip_first_record` in `read_dbd_files()` now skips the first record of **all** files (including the first), matching Lucas Merckelbach's dbdreader behavior
+- Streaming NetCDF writer keeps a single file handle open instead of reopening per batch
 
 ### Fixed
 
 - File ordering for TWR-style filenames (e.g. `ce_1137-2026-085-1-10.dbd` incorrectly sorting before `-2.dbd` under lexicographic sort)
+- `_parse_fileopen_time()` now logs a warning instead of silently sorting unparseable files to end
+- `DBD.get_fileopen_time()` no longer raises on unparseable header values
+- Thread-safe random number generator in C++ cache file creation
+- Integer overflow guard in C++ column capacity doubling
 
 ## [0.2.3] - 2026-02-23
 

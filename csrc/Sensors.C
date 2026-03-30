@@ -156,9 +156,8 @@ Sensors::mkFilename(const std::string& dir) const
 namespace {
   // Generate a unique temporary filename suffix
   std::string uniqueTempSuffix() {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    static std::uniform_int_distribution<> dis(100000, 999999);
+    thread_local std::mt19937 gen(std::random_device{}());
+    thread_local std::uniform_int_distribution<> dis(100000, 999999);
     return std::to_string(dis(gen));
   }
 }

@@ -22,8 +22,8 @@ def _add_common_args(parser) -> None:
     parser.add_argument(
         "-C",
         "--cache",
-        type=str,
-        default="",
+        type=Path,
+        default=None,
         metavar="directory",
         help="Directory to cache sensor list in",
     )
@@ -74,7 +74,7 @@ def run(args) -> int:
             logging.error("File not found: %s", f)
             return 1
 
-    cache_dir = args.cache
+    cache_dir = str(args.cache) if args.cache else ""
     result = xdbd.scan_sensors(
         filenames,
         cache_dir=cache_dir,

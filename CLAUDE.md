@@ -103,7 +103,7 @@ End              →  'X' tag
 
 4. **Must read ALL sensor values (code==2) even if not keeping them**. Skipping unneeded values desynchronizes the buffer offset.
 
-5. **`skip_first_record` semantics**: Files are sorted, first contributing file keeps all records, subsequent files drop their first record.
+5. **`skip_first_record` semantics**: When `True`, the first record of **every** file is dropped (matching Lucas' dbdreader behavior). Files are sorted by `fileopen_time` by default.
 
 6. **Fill values**: NaN for float32/float64, -127 for int8, -32768 for int16 — matching the C++ dbd2netCDF standalone.
 
