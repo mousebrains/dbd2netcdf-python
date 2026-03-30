@@ -49,6 +49,7 @@ def read_dbd_files(
     keep_missions: list[str] = ...,
     skip_first_record: bool = True,
     repair: bool = False,
+    presorted: bool = False,
 ) -> _MultiResult: ...
 def scan_sensors(
     filenames: list[str],

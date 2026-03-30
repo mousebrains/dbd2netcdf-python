@@ -876,6 +876,7 @@ def _base_args(**overrides) -> Namespace:
         "mail_from": None,
         "mail_subject": None,
         "smtp_host": "localhost",
+        "sort": "lexicographic",
     }
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -1055,6 +1056,57 @@ class TestDbd2ncRun:
         ds = xr.open_dataset(str(outfile), decode_timedelta=False)
         assert len(ds.data_vars) > 0
         ds.close()
+
+    def test_dbd2nc_run_sort_header_time(self, tmp_path):
+        """Streaming write with --sort header_time produces valid output."""
+        import xarray as xr
+
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        outfile = tmp_path / "out.nc"
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=True,
+            repair=False,
+            compression=5,
+            sort="header_time",
+        )
+        rc = run(args)
+        assert rc == 0
+        ds = xr.open_dataset(str(outfile), decode_timedelta=False)
+        assert len(ds.data_vars) > 0
+        ds.close()
+
+    def test_dbd2nc_run_sort_none(self, tmp_path):
+        """Streaming write with --sort none produces valid output."""
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:2]
+        outfile = tmp_path / "out.nc"
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=True,
+            repair=False,
+            compression=5,
+            sort="none",
+        )
+        rc = run(args)
+        assert rc == 0
 
     def test_dbd2nc_run_no_compression(self, tmp_path):
         from xarray_dbd.cli.dbd2nc import run

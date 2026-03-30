@@ -178,14 +178,17 @@ MultiFileResult parse_multiple_files(
     const std::vector<std::string>& skip_missions,
     const std::vector<std::string>& keep_missions,
     bool skip_first_record,
-    bool repair)
+    bool repair,
+    bool presorted)
 {
     if (filenames.empty()) {
         return {{}, {}, 0, 0};
     }
 
     std::vector<std::string> sorted_files(filenames);
-    std::sort(sorted_files.begin(), sorted_files.end());
+    if (!presorted) {
+        std::sort(sorted_files.begin(), sorted_files.end());
+    }
 
     Header::tMissions skipSet, keepSet;
     for (const auto& m : skip_missions) Header::addMission(m, skipSet);
@@ -573,14 +576,15 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
            const std::vector<std::string>& skip_missions,
            const std::vector<std::string>& keep_missions,
            bool skip_first_record,
-           bool repair) -> py::dict {
+           bool repair,
+           bool presorted) -> py::dict {
             MultiFileResult result;
             {
                 py::gil_scoped_release release;
                 result = parse_multiple_files(filenames, cache_dir, to_keep,
                                               criteria, skip_missions,
                                               keep_missions, skip_first_record,
-                                              repair);
+                                              repair, presorted);
             }
             return multi_result_to_python(std::move(result));
         },
@@ -592,10 +596,11 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
         py::arg("keep_missions") = std::vector<std::string>(),
         py::arg("skip_first_record") = true,
         py::arg("repair") = false,
+        py::arg("presorted") = false,
         "Read multiple DBD files with sensor union and return concatenated data.\n\n"
         "Uses a two-pass approach: pass 1 scans headers and builds a unified\n"
         "sensor list via SensorsMap, pass 2 reads data and merges into union\n"
-        "columns. Files are sorted internally.\n\n"
+        "columns. Files are sorted internally unless presorted is True.\n\n"
         "Parameters\n"
         "----------\n"
         "filenames : list of str\n"
@@ -614,7 +619,10 @@ PYBIND11_MODULE(_dbd_cpp, m, py::mod_gil_not_used()) {
         "    If True (default), drop the first record of each file after\n"
         "    the first.\n"
         "repair : bool, optional\n"
-        "    If True, attempt to recover data from corrupted records.\n\n"
+        "    If True, attempt to recover data from corrupted records.\n"
+        "presorted : bool, optional\n"
+        "    If True, skip internal lexicographic sort and process files\n"
+        "    in the order given. Default False.\n\n"
         "Returns\n"
         "-------\n"
         "dict\n"

@@ -60,6 +60,7 @@ def process_files(
             keep_missions=keep_missions,
             cache_dir=cache_dir,
             compression=5,
+            sort=args.sort,
         )
     except (OSError, ValueError, RuntimeError) as e:
         logging.error("Failed to process files for %s: %s", ofn, e)
@@ -210,6 +211,12 @@ def _add_common_args(parser) -> None:
 
     grp = parser.add_argument_group(description="Output related arguments")
     grp.add_argument("--output-prefix", type=str, required=True, help="Output prefix")
+    grp.add_argument(
+        "--sort",
+        choices=("lexicographic", "header_time", "none"),
+        default="lexicographic",
+        help="File sort order (default: lexicographic)",
+    )
 
     logger.add_args(parser)
 

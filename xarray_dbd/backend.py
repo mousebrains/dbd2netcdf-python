@@ -13,7 +13,7 @@ import numpy as np
 import xarray as xr
 from xarray.backends import BackendEntrypoint
 
-from ._dbd_cpp import read_dbd_file, read_dbd_files, scan_sensors
+from ._dbd_cpp import read_dbd_file, read_dbd_files, scan_headers, scan_sensors
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,31 @@ __all__ = [
     "open_multi_dbd_dataset",
     "write_multi_dbd_netcdf",
 ]
+
+
+_VALID_SORT_OPTIONS = ("lexicographic", "header_time", "none")
+
+
+def _parse_fileopen_time(time_str: str) -> float:
+    """Parse a DBD fileopen_time header string to epoch seconds."""
+    import time as _time
+    from calendar import timegm
+
+    datestr = time_str.replace("_", " ")
+    try:
+        ts = _time.strptime(datestr, "%a %b %d %H:%M:%S %Y")
+        return float(timegm(ts))
+    except (ValueError, OverflowError):
+        return float("inf")
+
+
+def _sort_by_header_time(filenames: list[str]) -> list[str]:
+    """Sort files by the fileopen_time value in their DBD headers."""
+    hdr = scan_headers(filenames)
+    time_map: dict[str, float] = {}
+    for fn, ts in zip(hdr["filenames"], hdr["fileopen_times"], strict=True):
+        time_map[fn] = _parse_fileopen_time(ts)
+    return sorted(filenames, key=lambda f: time_map.get(f, float("inf")))
 
 
 class DBDDataStore:
@@ -271,6 +296,7 @@ def open_multi_dbd_dataset(
     skip_missions: list[str] | None = None,
     keep_missions: list[str] | None = None,
     cache_dir: str | Path | None = None,
+    sort: str = "lexicographic",
 ) -> xr.Dataset:
     """Open multiple DBD files as a single concatenated xarray Dataset.
 
@@ -295,6 +321,10 @@ def open_multi_dbd_dataset(
         Mission names to include (excludes all others).
     cache_dir : str, Path, or None
         Directory for sensor cache files.
+    sort : str
+        File sort order: ``"lexicographic"`` (default), ``"header_time"``
+        (sort by fileopen_time from each file's header), or ``"none"``
+        (preserve caller's order).
 
     Returns
     -------
@@ -306,6 +336,8 @@ def open_multi_dbd_dataset(
     >>> ds = open_multi_dbd_dataset(files)
     >>> ds = open_multi_dbd_dataset(files, to_keep=["m_depth", "m_present_time"])
     """
+    if sort not in _VALID_SORT_OPTIONS:
+        raise ValueError(f"sort must be one of {_VALID_SORT_OPTIONS}, got {sort!r}")
     if skip_missions and keep_missions:
         raise ValueError("Cannot specify both skip_missions and keep_missions")
 
@@ -313,6 +345,13 @@ def open_multi_dbd_dataset(
 
     if not file_list:
         return xr.Dataset()
+
+    presorted = False
+    if sort == "header_time":
+        file_list = _sort_by_header_time(file_list)
+        presorted = True
+    elif sort == "none":
+        presorted = True
 
     cache_str = str(cache_dir) if cache_dir else ""
 
@@ -326,6 +365,7 @@ def open_multi_dbd_dataset(
             keep_missions=keep_missions or [],
             skip_first_record=skip_first_record,
             repair=repair,
+            presorted=presorted,
         )
     except RuntimeError as e:
         raise OSError(f"Failed to read {len(file_list)} DBD files: {e}") from e
@@ -383,6 +423,7 @@ def write_multi_dbd_netcdf(
     keep_missions: list[str] | None = None,
     cache_dir: str | Path | None = None,
     compression: int = 5,
+    sort: str = "lexicographic",
 ) -> tuple[int, int]:
     """Stream multiple DBD files directly to a NetCDF file.
 
@@ -413,6 +454,10 @@ def write_multi_dbd_netcdf(
         Directory for sensor cache files.
     compression : int
         Zlib compression level 0-9 (default 5, 0 disables compression).
+    sort : str
+        File sort order: ``"lexicographic"`` (default), ``"header_time"``
+        (sort by fileopen_time from each file's header), or ``"none"``
+        (preserve caller's order).
 
     Returns
     -------
@@ -420,10 +465,18 @@ def write_multi_dbd_netcdf(
     """
     import netCDF4
 
+    if sort not in _VALID_SORT_OPTIONS:
+        raise ValueError(f"sort must be one of {_VALID_SORT_OPTIONS}, got {sort!r}")
     if skip_missions and keep_missions:
         raise ValueError("Cannot specify both skip_missions and keep_missions")
 
-    file_list = sorted(str(Path(f)) for f in filenames)
+    file_list = [str(Path(f)) for f in filenames]
+    if sort == "lexicographic":
+        file_list.sort()
+    elif sort == "header_time":
+        file_list = _sort_by_header_time(file_list)
+    # sort == "none": preserve caller's order
+
     if not file_list:
         return 0, 0
 
@@ -443,6 +496,16 @@ def write_multi_dbd_netcdf(
 
     if not valid_files or not sensor_names:
         return 0, 0
+
+    # Re-sort valid_files to match the requested order (scan_sensors returns
+    # files in its own internal order which is always lexicographic).
+    presorted = sort != "lexicographic"
+    if sort == "header_time":
+        valid_files = _sort_by_header_time(valid_files)
+    elif sort == "none":
+        # Preserve the order from file_list, filtering to valid files only
+        valid_set = set(valid_files)
+        valid_files = [f for f in file_list if f in valid_set]
 
     # Apply to_keep filter to the union sensor list
     if to_keep:
@@ -502,6 +565,7 @@ def write_multi_dbd_netcdf(
                 keep_missions=keep_missions or [],
                 skip_first_record=skip_first_record,
                 repair=repair,
+                presorted=presorted,
             )
         except (OSError, RuntimeError, ValueError) as e:
             logger.warning("Error reading batch starting at index %d: %s", batch_idx, e)
