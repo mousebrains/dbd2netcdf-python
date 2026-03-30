@@ -214,8 +214,8 @@ def _add_common_args(parser) -> None:
     grp.add_argument(
         "--sort",
         choices=("lexicographic", "header_time", "none"),
-        default="lexicographic",
-        help="File sort order (default: lexicographic)",
+        default="header_time",
+        help="File sort order (default: header_time)",
     )
 
     logger.add_args(parser)

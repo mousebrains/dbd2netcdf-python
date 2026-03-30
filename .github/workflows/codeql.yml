@@ -25,7 +25,7 @@ jobs:
         language: [python, c-cpp]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -34,7 +34,7 @@ jobs:
 
       - name: Set up Python
         if: matrix.language == 'c-cpp'
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 

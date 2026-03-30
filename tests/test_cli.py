@@ -876,7 +876,7 @@ def _base_args(**overrides) -> Namespace:
         "mail_from": None,
         "mail_subject": None,
         "smtp_host": "localhost",
-        "sort": "lexicographic",
+        "sort": "header_time",
     }
     defaults.update(overrides)
     return Namespace(**defaults)

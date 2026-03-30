@@ -296,7 +296,7 @@ def open_multi_dbd_dataset(
     skip_missions: list[str] | None = None,
     keep_missions: list[str] | None = None,
     cache_dir: str | Path | None = None,
-    sort: str = "lexicographic",
+    sort: str = "header_time",
 ) -> xr.Dataset:
     """Open multiple DBD files as a single concatenated xarray Dataset.
 
@@ -322,8 +322,8 @@ def open_multi_dbd_dataset(
     cache_dir : str, Path, or None
         Directory for sensor cache files.
     sort : str
-        File sort order: ``"lexicographic"`` (default), ``"header_time"``
-        (sort by fileopen_time from each file's header), or ``"none"``
+        File sort order: ``"header_time"`` (default, sort by fileopen_time
+        from each file's header), ``"lexicographic"``, or ``"none"``
         (preserve caller's order).
 
     Returns
@@ -423,7 +423,7 @@ def write_multi_dbd_netcdf(
     keep_missions: list[str] | None = None,
     cache_dir: str | Path | None = None,
     compression: int = 5,
-    sort: str = "lexicographic",
+    sort: str = "header_time",
 ) -> tuple[int, int]:
     """Stream multiple DBD files directly to a NetCDF file.
 
@@ -455,8 +455,8 @@ def write_multi_dbd_netcdf(
     compression : int
         Zlib compression level 0-9 (default 5, 0 disables compression).
     sort : str
-        File sort order: ``"lexicographic"`` (default), ``"header_time"``
-        (sort by fileopen_time from each file's header), or ``"none"``
+        File sort order: ``"header_time"`` (default, sort by fileopen_time
+        from each file's header), ``"lexicographic"``, or ``"none"``
         (preserve caller's order).
 
     Returns

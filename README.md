@@ -111,6 +111,30 @@ ds = xdbd.open_multi_dbd_dataset(
 )
 ```
 
+### File sort order
+
+By default, files are sorted by the `fileopen_time` timestamp in each file's
+header, which is correct regardless of filename convention. Alternative sort
+modes are available:
+
+```python
+# Default: sort by header timestamp (universally correct)
+ds = xdbd.open_multi_dbd_dataset(files)
+
+# Sort by filename (lexicographic)
+ds = xdbd.open_multi_dbd_dataset(files, sort="lexicographic")
+
+# Preserve the caller's order (no sorting)
+ds = xdbd.open_multi_dbd_dataset(files, sort="none")
+```
+
+The `--sort` flag is also available on all CLI commands:
+
+```bash
+dbd2nc --sort lexicographic -C cache -o output.nc *.dbd
+mkone --sort none --output-prefix /path/to/output/ /path/to/raw/
+```
+
 ### Advanced options
 
 ```python
@@ -168,6 +192,7 @@ Open multiple DBD files as a single concatenated xarray Dataset.
 - `criteria` (list of str): Sensor names for selection criteria
 - `skip_missions` (list of str): Mission names to skip
 - `keep_missions` (list of str): Mission names to keep
+- `sort` (str): File sort order — `"header_time"` (default, sort by `fileopen_time` from each file's header), `"lexicographic"`, or `"none"` (preserve caller's order).
 
 **Returns:** `xarray.Dataset`
 

@@ -22,10 +22,13 @@ ruff format xarray_dbd/ *.py
 
 # Convert single/multiple DBD files to NetCDF
 dbd2nc -C cache -o output.nc input.dbd
-dbd2nc -C cache -o output.nc --skipFirst *.dcd
+dbd2nc -C cache -o output.nc --skip-first *.dcd
+
+# Sort by header timestamp (for TWR-style filenames with unpadded segments)
+dbd2nc --sort header_time -C cache -o output.nc *.dbd
 
 # Batch process directories (walks recursively for *.?[bc]d files)
-mkone --outputPrefix /path/to/output/ --cache /path/to/cache /path/to/raw/
+mkone --output-prefix /path/to/output/ --cache /path/to/cache /path/to/raw/
 
 # Test with sample data (if dbd_files/ directory exists)
 dbd2nc -C dbd_files/cache -o /tmp/test.nc dbd_files/*.dcd

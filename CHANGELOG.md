@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-03-30
+
+### Added
+
+- `sort` parameter for `open_multi_dbd_dataset()` and `write_multi_dbd_netcdf()` with three modes: `"header_time"` (default, sort by `fileopen_time` from each file's DBD header), `"lexicographic"`, and `"none"` (preserve caller's order)
+- `--sort` CLI flag for `dbd2nc`, `mkone`, and `2csv` commands
+- `presorted` parameter for `read_dbd_files()` C++ binding to skip internal lexicographic sort when files are pre-sorted by Python
+
+### Fixed
+
+- File ordering for TWR-style filenames (e.g. `ce_1137-2026-085-1-10.dbd` incorrectly sorting before `-2.dbd` under lexicographic sort)
+
 ## [0.2.3] - 2026-02-23
 
 ### Added
