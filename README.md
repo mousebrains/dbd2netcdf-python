@@ -198,6 +198,27 @@ Open multiple DBD files as a single concatenated xarray Dataset.
 
 **Returns:** `xarray.Dataset`
 
+### `write_multi_dbd_netcdf(filenames, output, **kwargs)`
+
+Stream multiple DBD files directly to a NetCDF file without loading all data
+into memory. Preferred for large datasets (100+ files).
+
+**Parameters:**
+- `filenames` (iterable): Paths to DBD files (duplicates removed automatically)
+- `output` (str or Path): Output NetCDF file path (parent directory created if needed)
+- `skip_first_record` (bool): Skip first record in each file (default: True)
+- `repair` (bool): Attempt to repair corrupted records (default: False)
+- `to_keep` (list of str): Sensor names to keep (default: all)
+- `criteria` (list of str): Sensor names for selection criteria
+- `skip_missions` (list of str): Mission names to skip
+- `keep_missions` (list of str): Mission names to keep
+- `cache_dir` (str, Path, or None): Directory for sensor cache files
+- `compression` (int): Zlib compression level 0-9 (default: 5, 0 disables)
+- `sort` (str): File sort order (default: `"header_time"`)
+- `batch_size` (int): Files per batch (default: 100; smaller reduces peak memory)
+
+**Returns:** `tuple[int, int]` — (n_records, n_files)
+
 ## Migration from dbdreader
 
 The dbdreader2 API is derived from Lucas Merckelbach's
@@ -462,6 +483,7 @@ print(f"Depth units: {ds['m_depth'].attrs['units']}")
 ### Working with trajectories
 
 ```python
+from pathlib import Path
 import xarray_dbd as xdbd
 import matplotlib.pyplot as plt
 
@@ -482,6 +504,7 @@ plt.show()
 ### Extracting science data
 
 ```python
+from pathlib import Path
 # Read full resolution science data
 files = sorted(Path('.').glob('*.ebd'))
 ds = xdbd.open_multi_dbd_dataset(

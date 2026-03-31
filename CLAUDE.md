@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**xarray-dbd** wraps the C++ [dbd2netCDF](https://github.com/mousebrains/dbd2netcdf) parser via pybind11 to read Slocum ocean glider Dinkum Binary Data (DBD) files with native xarray integration. The C++ source is copied into `csrc/` and compiled as a Python extension module (`_dbd_cpp`). The C++ reference implementation lives at `/Users/pat/tpw/dbd2netcdf/` and its `mkTwo.py` batch script is the reference for `mkone` behavior.
+**xarray-dbd** wraps the C++ [dbd2netCDF](https://github.com/mousebrains/dbd2netcdf) parser via pybind11 to read Slocum ocean glider Dinkum Binary Data (DBD) files with native xarray integration. The C++ source is copied into `csrc/` and compiled as a Python extension module (`_dbd_cpp`). The C++ reference implementation lives at `/Users/pat/tpw/dbd2netcdf/` and its `mkOne.py` batch script is the reference for `mkone` behavior.
 
 ## Commands
 
@@ -26,6 +26,9 @@ dbd2nc -C cache -o output.nc --skip-first *.dcd
 
 # Sort by header timestamp (for TWR-style filenames with unpadded segments)
 dbd2nc --sort header_time -C cache -o output.nc *.dbd
+
+# List available sensors without converting
+dbd2nc --list-sensors -C cache *.dbd
 
 # Batch process directories (walks recursively for *.?[bc]d files)
 mkone --output-prefix /path/to/output/ --cache /path/to/cache /path/to/raw/
@@ -114,4 +117,4 @@ End              →  'X' tag
 - C++ output includes `hdr_*` variables (10 extra vars) that Python doesn't produce — exclude from variable count comparison
 - Use `np.allclose(equal_nan=True)` for float comparison; for int types, mask out NaN in C++ before comparing
 - C++ reference output for the mariner dataset lives at `/Users/pat/tpw/mariner/tpw/`
-- Run C++ via: `python3 /Users/pat/tpw/dbd2netcdf/mkTwo.py --outputPrefix /path/to/output/ /path/to/raw/`
+- Run C++ via: `python3 /Users/pat/tpw/dbd2netcdf/mkOne.py --output-prefix /path/to/output/ /path/to/raw/`

@@ -190,7 +190,7 @@ def run(args) -> int:
                     cache_dir=cache_str,
                     to_keep=to_keep or [],
                     criteria=criteria or [],
-                    skip_first_record=(args.skip_first and file_count > 0),
+                    skip_first_record=args.skip_first,
                     repair=args.repair,
                 )
             except (OSError, RuntimeError, ValueError) as e:

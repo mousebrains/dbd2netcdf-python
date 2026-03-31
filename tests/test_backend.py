@@ -5,6 +5,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
+import numpy as np
 import pytest
 import xarray as xr
 from conftest import CACHE_DIR, DBD_DIR, skip_no_data
@@ -314,3 +315,64 @@ class TestWriteMultiDbdNetcdf:
         finally:
             Path(p1).unlink(missing_ok=True)
             Path(p2).unlink(missing_ok=True)
+
+    def test_round_trip_values(self):
+        """Write to NetCDF and read back — sensor values must match."""
+        files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        if not files:
+            pytest.skip("No .dcd files available")
+        sensor = "m_present_time"
+
+        with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+            tmpname = tmp.name
+        try:
+            n_records, _ = xdbd.write_multi_dbd_netcdf(
+                files,
+                tmpname,
+                cache_dir=CACHE_DIR,
+                to_keep=[sensor],
+            )
+            assert n_records > 0
+            ds = xr.open_dataset(tmpname, decode_timedelta=False)
+            written = ds[sensor].values
+            ds.close()
+
+            # Compare with in-memory dataset
+            ds_mem = xdbd.open_multi_dbd_dataset(files, cache_dir=CACHE_DIR, to_keep=[sensor])
+            expected = ds_mem[sensor].values
+
+            assert len(written) == len(expected)
+            np.testing.assert_allclose(written, expected, equal_nan=True)
+        finally:
+            Path(tmpname).unlink(missing_ok=True)
+
+    def test_cross_api_consistency(self):
+        """open_multi_dbd_dataset and write_multi_dbd_netcdf produce same data."""
+        files = sorted(DBD_DIR.glob("*.dcd"))[:3]
+        if not files:
+            pytest.skip("No .dcd files available")
+        sensors = ["m_present_time", "m_depth"]
+
+        ds_mem = xdbd.open_multi_dbd_dataset(files, cache_dir=CACHE_DIR, to_keep=sensors)
+
+        with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as tmp:
+            tmpname = tmp.name
+        try:
+            xdbd.write_multi_dbd_netcdf(
+                files,
+                tmpname,
+                cache_dir=CACHE_DIR,
+                to_keep=sensors,
+            )
+            ds_nc = xr.open_dataset(tmpname, decode_timedelta=False)
+            for s in sensors:
+                if s in ds_mem.data_vars and s in ds_nc.data_vars:
+                    np.testing.assert_allclose(
+                        ds_mem[s].values,
+                        ds_nc[s].values,
+                        equal_nan=True,
+                        err_msg=f"Mismatch for {s}",
+                    )
+            ds_nc.close()
+        finally:
+            Path(tmpname).unlink(missing_ok=True)

@@ -1011,7 +1011,7 @@ class MultiDBD:
 
     def _convert_seconds(self, timestring):
         """Parse a time value: numeric epoch seconds or date string."""
-        if isinstance(timestring, (int, float)):
+        if isinstance(timestring, (int, float, numpy.integer, numpy.floating)):
             return float(timestring)
         t_epoch = None
         with contextlib.suppress(ValueError, OverflowError, TypeError):
