@@ -38,23 +38,38 @@ int DecompressTWRBuf::underflow() {
     if (!this->mIS.read(frame.data(), n)) { // EOF
       return std::char_traits<char>::eof();
     }
-    const int j = LZ4_decompress_safe(frame.data(), this->mBuffer, static_cast<int>(n), sizeof(this->mBuffer));
+    const int j(LZ4_decompress_safe(frame.data(), this->mBuffer, static_cast<int>(n), sizeof(this->mBuffer)));
     if (j < 0) { // LZ4 decompression error
+      LOG_ERROR("LZ4 decompression failed (error {}) in {} (block size {})",
+                j, this->mFilename, n);
       return std::char_traits<char>::eof();
     }
-    if (static_cast<size_t>(j) > sizeof(this->mBuffer)) { // Probably a corrupted file
-      return std::char_traits<char>::eof();
-    }
-    this->setg(this->mBuffer, this->mBuffer, this->mBuffer + j);
+    const size_t decompressedSize(static_cast<size_t>(j));
+    this->setg(this->mBuffer, this->mBuffer, this->mBuffer + decompressedSize);
+    this->mPos += decompressedSize;
   } else { // Not compressed
     if (this->mIS.read(this->mBuffer, sizeof(this->mBuffer)) || this->mIS.gcount()) {
-      this->setg(this->mBuffer, this->mBuffer, this->mBuffer + this->mIS.gcount());
+      const auto n = this->mIS.gcount();
+      this->setg(this->mBuffer, this->mBuffer, this->mBuffer + n);
+      this->mPos += static_cast<size_t>(n);
     } else {
       return std::char_traits<char>::eof();
     }
   } // mqCompressed
 
   return std::char_traits<char>::to_int_type(*this->gptr());
+}
+
+DecompressTWRBuf::pos_type
+DecompressTWRBuf::seekoff(off_type off, std::ios_base::seekdir dir,
+                          std::ios_base::openmode /*which*/) {
+  // Only support tellg(): seekoff(0, cur)
+  if (dir == std::ios_base::cur && off == 0) {
+    // mPos is total bytes loaded; subtract unread bytes remaining in buffer
+    const auto remaining = this->egptr() - this->gptr();
+    return static_cast<pos_type>(this->mPos - static_cast<size_t>(remaining));
+  }
+  return pos_type(off_type(-1)); // Seeking not supported
 }
 
 bool qCompressed(const std::string& fn) {
