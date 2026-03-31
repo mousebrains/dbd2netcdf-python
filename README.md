@@ -177,6 +177,7 @@ Open a single DBD file as an xarray Dataset.
 - `to_keep` (list of str): Sensor names to keep (default: all)
 - `criteria` (list of str): Sensor names for selection criteria
 - `drop_variables` (list of str): Variables to exclude
+- `cache_dir` (str, Path, or None): Directory for sensor cache files
 
 **Returns:** `xarray.Dataset`
 
@@ -192,6 +193,7 @@ Open multiple DBD files as a single concatenated xarray Dataset.
 - `criteria` (list of str): Sensor names for selection criteria
 - `skip_missions` (list of str): Mission names to skip
 - `keep_missions` (list of str): Mission names to keep
+- `cache_dir` (str, Path, or None): Directory for sensor cache files
 - `sort` (str): File sort order — `"header_time"` (default, sort by `fileopen_time` from each file's header), `"lexicographic"`, or `"none"` (preserve caller's order).
 
 **Returns:** `xarray.Dataset`
@@ -342,9 +344,8 @@ mdbd = dbdreader.MultiDBD(
   to batch additional sensors into the first `get()` call.
 
 - **`skip_initial_line` semantics.** When reading multiple files, the
-  first contributing file keeps all its records; subsequent files skip
-  their first record. dbdreader skips the first record of every file.
-  Multi-file record counts may therefore differ by up to N-1.
+  first record of every file is skipped (matching dbdreader). Multi-file
+  record counts should match dbdreader exactly.
 
 - **Float64 output.** `get()` always returns float64 arrays, matching
   dbdreader's behavior. Integer fill values (-127 for int8, -32768 for
@@ -493,6 +494,30 @@ df = ds.to_dataframe()
 print(df.describe())
 ```
 
+## Choosing an API
+
+| Scenario | Recommended API |
+|----------|----------------|
+| Single file, quick look | `xr.open_dataset(f, engine="dbd")` |
+| Multiple files, < 1 GB | `xdbd.open_multi_dbd_dataset(files, to_keep=[...])` |
+| Multiple files, large dataset | `xdbd.write_multi_dbd_netcdf(files, "out.nc")` |
+| Interactive / Jupyter | `xdbd.MultiDBD(filenames=files)` with `.get()` (lazy) |
+| Batch processing 1000+ files | `mkone` CLI (multiprocessing) |
+| Drop-in dbdreader replacement | `import xarray_dbd.dbdreader2 as dbdreader` |
+
+## Slocum File Types
+
+| Extension | Name | Contents |
+|-----------|------|----------|
+| `.dbd` / `.dcd` | Flight | Vehicle sensors: depth, attitude, speed, GPS |
+| `.ebd` / `.ecd` | Science | Payload sensors: CTD, optics, oxygen |
+| `.sbd` / `.scd` | Short burst | Surface telemetry summary records |
+| `.tbd` / `.tcd` | Technical | Detailed engineering telemetry |
+| `.mbd` / `.mcd` | Mini | Compact engineering subset |
+| `.nbd` / `.ncd` | Narrow | Compact science subset |
+
+Compressed variants (`.?cd`) use LZ4 framing and are handled transparently.
+
 ## Known Limitations
 
 - **Python 3.10+ required** — uses `from __future__ import annotations` for modern type-hint syntax.
@@ -503,6 +528,18 @@ print(df.describe())
 - **No lazy loading for xarray API** — `open_dataset()` reads all sensor data
   into memory. For very large deployments, use `to_keep` to select only needed
   sensors. The dbdreader2 API (`DBD`/`MultiDBD`) uses lazy incremental loading.
+- **Fill values in xarray output** — Integer sensors use sentinel fill values
+  (-127 for int8, -32768 for int16) rather than NaN. Between dives, science
+  sensors may contain these sentinels or NaN. Filter with
+  `ds.where(ds != -32768)` or use the dbdreader2 `get(return_nans=False)` API
+  which filters automatically.
+- **Not CF-compliant** — NetCDF output preserves sensor `units` but does not
+  add CF attributes (`standard_name`, `axis`, `calendar`). Add metadata
+  post-hoc for publication, e.g.:
+  ```python
+  ds["m_present_time"].attrs["axis"] = "T"
+  ds["m_present_time"].attrs["units"] = "seconds since 1970-01-01"
+  ```
 
 ## Troubleshooting
 

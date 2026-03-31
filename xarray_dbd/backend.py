@@ -39,6 +39,7 @@ def _parse_fileopen_time(time_str: str) -> float:
         ts = _time.strptime(datestr, "%a %b %d %H:%M:%S %Y")
         return float(timegm(ts))
     except (ValueError, OverflowError):
+        logger.warning("Could not parse fileopen_time %r, file will sort to end", time_str)
         return float("inf")
 
 
@@ -306,9 +307,9 @@ def open_multi_dbd_dataset(
     Parameters
     ----------
     filenames : iterable of str or Path
-        Paths to DBD files. Files are sorted internally.
+        Paths to DBD files. Duplicates are removed automatically.
     skip_first_record : bool
-        Skip first record in each file except the first (default True).
+        Skip first record in each file (default True), matching dbdreader.
     repair : bool
         Attempt to repair corrupted records (default False).
     to_keep : list of str, optional
@@ -341,7 +342,7 @@ def open_multi_dbd_dataset(
     if skip_missions and keep_missions:
         raise ValueError("Cannot specify both skip_missions and keep_missions")
 
-    file_list = [str(Path(f)) for f in filenames]
+    file_list = list(dict.fromkeys(str(Path(f)) for f in filenames))
 
     if not file_list:
         return xr.Dataset()
@@ -370,9 +371,10 @@ def open_multi_dbd_dataset(
     except RuntimeError as e:
         raise OSError(f"Failed to read {len(file_list)} DBD files: {e}") from e
 
-    columns = list(result["columns"])
+    columns = result["columns"]
     sensor_names = list(result["sensor_names"])
     sensor_units = list(result["sensor_units"])
+    sensor_sizes = list(result["sensor_sizes"])
     n_records = int(result["n_records"])
     n_files = int(result["n_files"])
 
@@ -381,7 +383,7 @@ def open_multi_dbd_dataset(
         if missing:
             logger.warning("Requested sensors not found in any file: %s", sorted(missing))
 
-    if not columns:
+    if not sensor_names:
         return xr.Dataset()
 
     # Create dataset
@@ -389,7 +391,10 @@ def open_multi_dbd_dataset(
     data_vars = {}
 
     for idx, name in enumerate(sensor_names):
-        attrs = {"units": sensor_units[idx]}
+        attrs = {
+            "units": sensor_units[idx],
+            "sensor_size": sensor_sizes[idx],
+        }
         data_vars[name] = xr.Variable(dims, columns[idx], attrs=attrs)
 
     ds_attrs: dict[str, Any] = {
@@ -435,11 +440,12 @@ def write_multi_dbd_netcdf(
     Parameters
     ----------
     filenames : iterable of str or Path
-        Paths to DBD files.  Files are sorted internally.
+        Paths to DBD files.  Duplicates are removed automatically.
     output : str or Path
-        Path for the output NetCDF file.
+        Path for the output NetCDF file.  Parent directory is created
+        if it does not exist.
     skip_first_record : bool
-        Skip first record in each file except the first (default True).
+        Skip first record in each file (default True), matching dbdreader.
     repair : bool
         Attempt to repair corrupted records (default False).
     to_keep : list of str, optional
@@ -471,6 +477,18 @@ def write_multi_dbd_netcdf(
         raise ValueError("Cannot specify both skip_missions and keep_missions")
 
     file_list = [str(Path(f)) for f in filenames]
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for f in file_list:
+        if f not in seen:
+            seen.add(f)
+            deduped.append(f)
+    if len(deduped) < len(file_list):
+        logger.warning("Removed %d duplicate file(s) from input", len(file_list) - len(deduped))
+    file_list = deduped
+
     if sort == "lexicographic":
         file_list.sort()
     elif sort == "header_time":
@@ -524,7 +542,12 @@ def write_multi_dbd_netcdf(
         dtype, fill = _NC_TYPE_INFO.get(size, ("f8", np.float64("nan")))
         fill_vals[name] = (dtype, fill)
 
-    # Create NetCDF file with variables
+    # Ensure output directory exists
+    out_path = Path(output)
+    if out_path.parent and not out_path.parent.exists():
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Create NetCDF file, keep handle open for Pass 2
     chunk = 5000
     nc = netCDF4.Dataset(str(output), "w", format="NETCDF4")
     try:
@@ -544,54 +567,49 @@ def write_multi_dbd_netcdf(
             else:
                 v = nc.createVariable(name, dtype, ("i",), fill_value=False)
             v.units = units
-    finally:
-        nc.close()
 
-    # Pass 2: read files in batches, append to NetCDF
-    batch_size = 100
-    offset = 0
-    total_files = 0
+        # Pass 2: read files in batches, write to NetCDF
+        batch_size = 100
+        offset = 0
+        total_files = 0
 
-    for batch_idx in range(0, len(valid_files), batch_size):
-        batch_files = valid_files[batch_idx : batch_idx + batch_size]
+        for batch_idx in range(0, len(valid_files), batch_size):
+            batch_files = valid_files[batch_idx : batch_idx + batch_size]
 
-        try:
-            result = read_dbd_files(
-                batch_files,
-                cache_dir=cache_str,
-                to_keep=to_keep or [],
-                criteria=criteria or [],
-                skip_missions=skip_missions or [],
-                keep_missions=keep_missions or [],
-                skip_first_record=skip_first_record,
-                repair=repair,
-                presorted=presorted,
-            )
-        except (OSError, RuntimeError, ValueError) as e:
-            logger.warning("Error reading batch starting at index %d: %s", batch_idx, e)
-            continue
+            try:
+                result = read_dbd_files(
+                    batch_files,
+                    cache_dir=cache_str,
+                    to_keep=to_keep or [],
+                    criteria=criteria or [],
+                    skip_missions=skip_missions or [],
+                    keep_missions=keep_missions or [],
+                    skip_first_record=skip_first_record,
+                    repair=repair,
+                    presorted=presorted,
+                )
+            except (OSError, RuntimeError, ValueError) as e:
+                logger.warning("Error reading batch starting at index %d: %s", batch_idx, e)
+                continue
 
-        n = int(result["n_records"])
-        batch_files_read = int(result["n_files"])
+            n = int(result["n_records"])
+            batch_files_read = int(result["n_files"])
 
-        # For batches after the first, the first file's first record overlaps
-        # with the previous batch's last file — skip it
-        start = 1 if (batch_idx > 0 and skip_first_record and n > 0) else 0
-        n_write = n - start
+            # For batches after the first, the first file's first record overlaps
+            # with the previous batch's last file — skip it
+            start = 1 if (batch_idx > 0 and skip_first_record and n > 0) else 0
+            n_write = n - start
 
-        total_files += batch_files_read
+            total_files += batch_files_read
 
-        if n_write <= 0:
-            continue
+            if n_write <= 0:
+                continue
 
-        # Build column map from this batch's result
-        result_names = list(result["sensor_names"])
-        result_cols = list(result["columns"])
-        col_map = dict(zip(result_names, result_cols, strict=True))
+            # Build column map from this batch's result
+            result_names = result["sensor_names"]
+            result_cols = result["columns"]
+            col_map = dict(zip(result_names, result_cols, strict=True))
 
-        # Append to NetCDF
-        nc = netCDF4.Dataset(str(output), "a")
-        try:
             for name in sensor_names:
                 col = col_map.get(name)
                 if col is not None:
@@ -603,10 +621,10 @@ def write_multi_dbd_netcdf(
             offset += n_write
             nc.setncattr("n_files", total_files)
             nc.setncattr("total_records", offset)
-        finally:
-            nc.close()
 
-        # result goes out of scope — batch memory freed
-        del result, result_cols, col_map
+            del result, result_cols, col_map
+
+    finally:
+        nc.close()
 
     return offset, total_files

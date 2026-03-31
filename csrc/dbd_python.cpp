@@ -283,7 +283,7 @@ MultiFileResult parse_multiple_files(
 
             size_t n = result.n_records;
             size_t start = 0;
-            if (skip_first_record && fileCount > 0 && n > 0) {
+            if (skip_first_record && n > 0) {
                 start = 1;
                 n -= 1;
             }
@@ -291,7 +291,8 @@ MultiFileResult parse_multiple_files(
             if (n > 0) {
                 // Grow union columns if needed (doubling strategy)
                 if (offset + n > capacity) {
-                    capacity = std::max(offset + n, capacity * 2);
+                    size_t doubled = (capacity <= SIZE_MAX / 2) ? capacity * 2 : SIZE_MAX;
+                    capacity = std::max(offset + n, doubled);
                     grow_union_columns(unionColumns, unionInfo, capacity);
                 }
 

@@ -35,7 +35,7 @@ def process_files(
     odir = os.path.dirname(ofn)
     if odir and not os.path.isdir(odir):
         logging.info("Creating %s", odir)
-        os.makedirs(odir, mode=0o755, exist_ok=True)
+        os.makedirs(odir, exist_ok=True)
 
     # Read sensor list if provided
     to_keep = None
@@ -117,7 +117,7 @@ def write_sensors(sensors: set[str], ofn: str) -> str:
     odir = os.path.dirname(ofn)
     if odir and not os.path.isdir(odir):
         logging.info("Creating %s", odir)
-        os.makedirs(odir, mode=0o755, exist_ok=True)
+        os.makedirs(odir, exist_ok=True)
 
     with open(ofn, "w", encoding="utf-8") as fp:
         fp.write("\n".join(sorted(sensors)))
@@ -198,12 +198,17 @@ def _add_common_args(parser) -> None:
         help="Dinkum binary files or directories to convert",
     )
     grp = parser.add_argument_group(description="Processing options")
-    grp.add_argument("--cache", type=str, default="cache", help="Directory for sensor cache files")
+    grp.add_argument("--cache", type=Path, default="cache", help="Directory for sensor cache files")
     grp.add_argument("--repair", action="store_true", help="Should corrupted files be 'repaired'")
     grp.add_argument(
         "--keep-first",
         action="store_true",
         help="Should the first record not be discarded on all the files?",
+    )
+    grp.add_argument(
+        "--skip-first",
+        action="store_true",
+        help="Skip first record in each file (same as omitting --keep-first)",
     )
     g = grp.add_mutually_exclusive_group()
     g.add_argument("--exclude", type=str, action="append", help="Mission(s) to exclude")
@@ -241,6 +246,10 @@ def _worker(ofn, filenames, args, sensors_filename=None):
 def run(args) -> int:
     """Execute the mkone batch processing."""
     logger.mk_logger(args)
+
+    # --skip-first is the preferred flag; --keep-first is the legacy inverse
+    if getattr(args, "skip_first", False):
+        args.keep_first = False
 
     if args.exclude is None and args.include is None:
         args.exclude = (

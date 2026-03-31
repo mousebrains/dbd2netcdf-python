@@ -142,10 +142,16 @@ class DBD:
         return self.headerInfo.get("mission_name", "").lower()
 
     def get_fileopen_time(self):
-        """Return file open time as seconds since epoch (UTC)."""
+        """Return file open time as seconds since epoch (UTC).
+
+        Returns 0 if the header value cannot be parsed.
+        """
         datestr = self.headerInfo.get("fileopen_time", "").replace("_", " ")
         fmt = "%a %b %d %H:%M:%S %Y"
-        return strptimeToEpoch(datestr, fmt)
+        try:
+            return strptimeToEpoch(datestr, fmt)
+        except (ValueError, OverflowError):
+            return 0
 
     def has_parameter(self, parameter):
         """Return True if *parameter* is available in this file."""
