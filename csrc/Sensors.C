@@ -256,9 +256,13 @@ Sensors::load(const std::string& dir,
   }
 
   for (std::string line; getline(is, line);) {
-    const Sensor sensor(line);
-    if (sensor.qAvailable()) {
-      mSensors.push_back(sensor);
+    try {
+      const Sensor sensor(line);
+      if (sensor.qAvailable()) {
+        mSensors.push_back(sensor);
+      }
+    } catch (const MyException& e) {
+      LOG_WARN("Skipping corrupt cache line in '{}': {}", filename, e.what());
     }
   }
 

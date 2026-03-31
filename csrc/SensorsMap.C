@@ -20,6 +20,7 @@
 #include "SensorsMap.H"
 #include "Header.H"
 #include "MyException.H"
+#include "Logger.H"
 #include <unordered_map>
 #include <iostream>
 #include <sstream>
@@ -72,7 +73,10 @@ SensorsMap::insert(std::istream& is,
   if (qPosition && !hdr.qFactored()) { // Read in nSensors worth of lines, but skip processing
     for (size_t i = hdr.nSensors(); i; --i) {
       std::string line;
-      getline(is, line);
+      if (!getline(is, line)) {
+        LOG_WARN("Unexpected EOF skipping sensor lines for CRC '{}'", hdr.crc());
+        break;
+      }
     }
   }
 }
@@ -88,9 +92,7 @@ SensorsMap::setUpForData()
   // Even if there is only one, we still do this to update indices
 
   typedef std::unordered_map<std::string, size_t> tNames;
-  typedef std::unordered_map<std::string, int> tSizes;
   tNames names;
-  tSizes sizes;
 
   for (tMap::iterator it(mMap.begin()), et(mMap.end()); it != et; ++it) {
     Sensors& sensors(it->second);
@@ -99,20 +101,17 @@ SensorsMap::setUpForData()
       if (sensor.qKeep()) {
         tNames::const_iterator nt(names.find(sensor.name()));
         if (nt != names.end()) { // Already known
-          // Validate that byte size matches the first occurrence
-          int prev_size = sizes[sensor.name()];
-          if (sensor.size() != prev_size) {
+          sensor.index(static_cast<int>(nt->second));
+          const Sensor& existing = mAllSensors[nt->second];
+          if (sensor.size() != existing.size()) {
             std::ostringstream oss;
-            oss << "Sensor '" << sensor.name()
-                << "' has conflicting byte sizes across files: "
-                << prev_size << " vs " << sensor.size();
+            oss << "Sensor '" << sensor.name() << "' has size " << sensor.size()
+                << " but was previously seen with size " << existing.size();
             throw MyException(oss.str());
           }
-          sensor.index(static_cast<int>(nt->second));
         } else { // Not seen yet
           sensor.index(static_cast<int>(names.size()));
           names.insert(std::make_pair(sensor.name(), static_cast<int>(names.size())));
-          sizes.insert(std::make_pair(sensor.name(), sensor.size()));
           mAllSensors.insert(sensor);
         }
       }
