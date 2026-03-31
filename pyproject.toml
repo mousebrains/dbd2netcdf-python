@@ -133,7 +133,7 @@ python_files = "test_*.py"
 
 [tool.cibuildwheel]
 build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*", "cp314-*"]
-skip = ["*-musllinux_i686", "*-win32", "pp*"]
+skip = ["*-musllinux_i686", "*-win32"]
 test-skip = ["*-manylinux_*", "*-musllinux_*"]
 test-command = "python -c \"import xarray_dbd; print(xarray_dbd.__version__)\""
 build-verbosity = 1
