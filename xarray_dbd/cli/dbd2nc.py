@@ -75,14 +75,18 @@ def _add_common_args(parser) -> None:
         "--output",
         type=Path,
         metavar="filename",
-        required=True,
-        help="Where to store the data",
+        help="Where to store the data (required unless --list-sensors)",
+    )
+    parser.add_argument(
+        "--list-sensors",
+        action="store_true",
+        help="Print available sensors and exit (no conversion)",
     )
     parser.add_argument(
         "-s",
         "--skip-first",
         action="store_true",
-        help="Skip first record in each file except the first",
+        help="Skip first record in each file (default when omitted)",
     )
     parser.add_argument(
         "-r",
@@ -135,6 +139,25 @@ def run(args) -> int:
         if not f.exists():
             logging.error("File not found: %s", f)
             return 1
+
+    if getattr(args, "list_sensors", False):
+        cache_dir = args.cache
+        if cache_dir is None and len(args.files) > 0:
+            cache_dir = args.files[0].parent / "cache"
+        result = xdbd.scan_sensors(
+            [str(f) for f in args.files],
+            cache_dir=str(cache_dir) if cache_dir else "",
+        )
+        names = list(result["sensor_names"])
+        units = list(result["sensor_units"])
+        sizes = list(result["sensor_sizes"])
+        for name, unit, sz in sorted(zip(names, units, sizes, strict=True)):
+            print(f"{name:40s} {unit:15s} ({sz} bytes)")
+        return 0
+
+    if not getattr(args, "output", None):
+        logging.error("--output is required (unless --list-sensors)")
+        return 1
 
     criteria = None
     if args.sensors:

@@ -429,6 +429,7 @@ def write_multi_dbd_netcdf(
     cache_dir: str | Path | None = None,
     compression: int = 5,
     sort: str = "header_time",
+    batch_size: int = 100,
 ) -> tuple[int, int]:
     """Stream multiple DBD files directly to a NetCDF file.
 
@@ -569,9 +570,9 @@ def write_multi_dbd_netcdf(
             v.units = units
 
         # Pass 2: read files in batches, write to NetCDF
-        batch_size = 100
         offset = 0
         total_files = 0
+        skipped_batches = 0
 
         for batch_idx in range(0, len(valid_files), batch_size):
             batch_files = valid_files[batch_idx : batch_idx + batch_size]
@@ -590,15 +591,13 @@ def write_multi_dbd_netcdf(
                 )
             except (OSError, RuntimeError, ValueError) as e:
                 logger.warning("Error reading batch starting at index %d: %s", batch_idx, e)
+                skipped_batches += 1
                 continue
 
             n = int(result["n_records"])
             batch_files_read = int(result["n_files"])
 
-            # For batches after the first, the first file's first record overlaps
-            # with the previous batch's last file — skip it
-            start = 1 if (batch_idx > 0 and skip_first_record and n > 0) else 0
-            n_write = n - start
+            n_write = n
 
             total_files += batch_files_read
 
@@ -613,7 +612,7 @@ def write_multi_dbd_netcdf(
             for name in sensor_names:
                 col = col_map.get(name)
                 if col is not None:
-                    nc.variables[name][offset : offset + n_write] = col[start : start + n_write]
+                    nc.variables[name][offset : offset + n_write] = col[:n_write]
                 else:
                     _, fill = fill_vals[name]
                     nc.variables[name][offset : offset + n_write] = np.full(n_write, fill)
@@ -623,6 +622,14 @@ def write_multi_dbd_netcdf(
             nc.setncattr("total_records", offset)
 
             del result, result_cols, col_map
+
+        if skipped_batches:
+            logger.warning(
+                "%d batch(es) failed; %d of %d files written",
+                skipped_batches,
+                total_files,
+                len(valid_files),
+            )
 
     finally:
         nc.close()

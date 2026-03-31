@@ -283,3 +283,34 @@ class TestWriteMultiDbdNetcdf:
             ds.close()
         finally:
             Path(tmpname).unlink(missing_ok=True)
+
+    def test_batch_boundary_no_record_loss(self):
+        """Small batch_size should produce same record count as large batch."""
+        files = sorted(DBD_DIR.glob("*.dcd"))
+        if len(files) < 3:
+            pytest.skip("Need at least 3 files for batch boundary test")
+
+        with (
+            tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as t1,
+            tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as t2,
+        ):
+            p1, p2 = t1.name, t2.name
+        try:
+            n1, _ = xdbd.write_multi_dbd_netcdf(
+                files,
+                p1,
+                cache_dir=CACHE_DIR,
+                batch_size=1,
+                to_keep=["m_present_time"],
+            )
+            n2, _ = xdbd.write_multi_dbd_netcdf(
+                files,
+                p2,
+                cache_dir=CACHE_DIR,
+                batch_size=1000,
+                to_keep=["m_present_time"],
+            )
+            assert n1 == n2, f"batch_size=1 gave {n1} records, batch_size=1000 gave {n2}"
+        finally:
+            Path(p1).unlink(missing_ok=True)
+            Path(p2).unlink(missing_ok=True)

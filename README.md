@@ -38,7 +38,7 @@ pip install xarray-dbd
 For the CLI tools only:
 
 ```bash
-pipx install xarray-dbd   # installs dbd2nc and mkone commands
+pipx install xarray-dbd   # installs xdbd command (xdbd 2nc, xdbd mkone, etc.)
 ```
 
 Or install from source (requires a C++ compiler and CMake):
@@ -142,7 +142,7 @@ ds = xdbd.open_dbd_dataset(
     'test.sbd',
     skip_first_record=True,  # Skip first record (default)
     repair=True,             # Attempt to repair corrupted data
-    to_keep=['m_*'],         # Keep sensors matching pattern (future feature)
+    to_keep=['m_depth', 'm_lat'],  # Keep only these sensors
     criteria=['m_present_time'],  # Sensors for record selection
 )
 ```
@@ -517,6 +517,50 @@ print(df.describe())
 | `.nbd` / `.ncd` | Narrow | Compact science subset |
 
 Compressed variants (`.?cd`) use LZ4 framing and are handled transparently.
+
+## Working with Glider Data
+
+### Discovering available sensors
+
+```python
+import xarray_dbd as xdbd
+
+# xarray API
+ds = xdbd.open_dbd_dataset("file.dbd", cache_dir="cache")
+for var in sorted(ds.data_vars):
+    print(f"  {var:30s} {ds[var].attrs.get('units', '')}")
+
+# dbdreader2 API
+dbd = xdbd.MultiDBD(pattern="*.dbd", cacheDir="cache")
+for name in sorted(dbd.parameterNames["eng"]):
+    print(f"  {name:30s} {dbd.parameterUnits.get(name, '')}")
+```
+
+Sensor naming conventions are documented in
+[TWR's masterdata files](https://gliderfs2.ceoas.oregonstate.edu/gliderweb/masterdata/).
+
+### Time conversion
+
+`m_present_time` contains UTC seconds since 1970-01-01 (Unix epoch, float64):
+
+```python
+import pandas as pd
+
+time = pd.to_datetime(ds["m_present_time"].values, unit="s", utc=True)
+```
+
+### Handling fill values
+
+Float sensors use NaN for missing data. Integer sensors use sentinel fill
+values (-127 for int8, -32768 for int16). Filter them out:
+
+```python
+# xarray — replace sentinels with NaN
+ds = ds.where(ds != -32768)
+
+# dbdreader2 — automatic filtering (default)
+t, v = dbd.get("m_depth")  # return_nans=False by default
+```
 
 ## Known Limitations
 

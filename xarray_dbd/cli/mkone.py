@@ -15,6 +15,7 @@ import logging
 import multiprocessing
 import os
 import re
+import signal
 import sys
 import time
 from argparse import ArgumentParser, Namespace
@@ -240,7 +241,11 @@ def add_args(subparsers) -> None:
 def _worker(ofn, filenames, args, sensors_filename=None):
     """Multiprocessing worker — sets up logging then processes one output file."""
     logger.mk_logger(args)
-    process_files(ofn, filenames, args, sensors_filename)
+    try:
+        process_files(ofn, filenames, args, sensors_filename)
+    except Exception:
+        logging.exception("Worker for %s failed", ofn)
+        sys.exit(1)
 
 
 def run(args) -> int:
@@ -311,13 +316,27 @@ def run(args) -> int:
         processes.append((p, ofn))
         p.start()
 
+    # Terminate children on SIGINT/SIGTERM so Ctrl+C doesn't leave orphans
+    def _terminate_children(signum, frame):
+        for p, _ in processes:
+            if p.is_alive():
+                p.terminate()
+        sys.exit(1)
+
+    prev_int = signal.signal(signal.SIGINT, _terminate_children)
+    prev_term = signal.signal(signal.SIGTERM, _terminate_children)
+
     # Wait for all to complete
     failed = False
-    for p, ofn in processes:
-        p.join()
-        if p.exitcode != 0:
-            logging.error("Worker for %s exited with code %d", ofn, p.exitcode)
-            failed = True
+    try:
+        for p, ofn in processes:
+            p.join()
+            if p.exitcode != 0:
+                logging.error("Worker for %s exited with code %d", ofn, p.exitcode)
+                failed = True
+    finally:
+        signal.signal(signal.SIGINT, prev_int)
+        signal.signal(signal.SIGTERM, prev_term)
 
     logging.info("All processing complete in %.2f seconds", time.time() - start_time)
     return 1 if failed else 0

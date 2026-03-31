@@ -1299,3 +1299,101 @@ class TestLazyLoading:
         assert "m_lat" in mdbd._loaded_eng_params
         assert mdbd._loaded_eng_params == params_after_first | {"m_lat"}
         mdbd.close()
+
+
+# ---------------------------------------------------------------------------
+# CTD, time range, and file ordering tests
+# ---------------------------------------------------------------------------
+
+
+class TestMultiDBDCTD:
+    """Tests for CTD sync and type detection."""
+
+    def _ecd_files(self) -> list[str]:
+        return [str(f) for f in sorted(DBD_DIR.glob("*.ecd"))]
+
+    def test_determine_ctd_type(self):
+        files = self._ecd_files()
+        if not files:
+            pytest.skip("No ecd files in test data")
+        mdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+        ctd_type = mdbd.determine_ctd_type()
+        assert ctd_type in ("ctd41cp", "rbrctd")
+        mdbd.close()
+
+    def test_get_ctd_sync(self):
+        files = self._ecd_files()
+        if not files:
+            pytest.skip("No ecd files in test data")
+        mdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+        ctd_type = mdbd.determine_ctd_type()
+        ts_param = f"sci_{ctd_type}_timestamp"
+        if not mdbd.has_parameter(ts_param):
+            pytest.skip(f"No {ts_param} in test data")
+        try:
+            result = mdbd.get_CTD_sync()
+        except DbdError:
+            pytest.skip("Not enough CTD data for sync")
+        assert len(result) == 4  # (tctd, C, T, P)
+        tctd, c, t_w, p_w = result
+        assert len(tctd) == len(c) == len(t_w) == len(p_w)
+        assert len(tctd) > 0
+        # Conductivity should be > 0 (filtered by get_CTD_sync)
+        assert np.all(c > 0)
+        mdbd.close()
+
+    def test_get_ctd_sync_with_extra_param(self):
+        files = self._ecd_files()
+        if not files:
+            pytest.skip("No ecd files in test data")
+        mdbd = MultiDBD(filenames=files, cacheDir=CACHE_DIR)
+        ctd_type = mdbd.determine_ctd_type()
+        if not mdbd.has_parameter(f"sci_{ctd_type}_timestamp"):
+            pytest.skip("No CTD timestamp in test data")
+        try:
+            result = mdbd.get_CTD_sync("sci_m_present_time")
+        except DbdError:
+            pytest.skip("Not enough CTD data for sync")
+        assert len(result) == 5  # (tctd, C, T, P, extra)
+        mdbd.close()
+
+
+class TestMultiDBDTimeRange:
+    """Tests for global time range."""
+
+    def test_get_global_time_range(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        start, end = mdbd.get_global_time_range()
+        assert isinstance(start, str)
+        assert isinstance(end, str)
+        assert start != end
+        mdbd.close()
+
+    def test_get_time_range(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        start, end = mdbd.get_time_range()
+        assert isinstance(start, str)
+        assert isinstance(end, str)
+        mdbd.close()
+
+    def test_time_range_custom_format(self):
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        start, end = mdbd.get_global_time_range(fmt="%Y-%m-%d")
+        # Should contain year-month-day pattern
+        assert "-" in start
+        mdbd.close()
+
+
+class TestMultiDBDFileOrdering:
+    """Tests for file ordering with unpadded segment numbers."""
+
+    def test_monotonic_timestamps(self):
+        """Verify that MultiDBD produces monotonically increasing timestamps."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        t, _v = mdbd.get("m_present_time", return_nans=True)
+        # Filter out NaN times
+        mask = np.isfinite(t)
+        t_valid = t[mask]
+        assert len(t_valid) > 0
+        assert np.all(np.diff(t_valid) >= 0), "Timestamps should be monotonically increasing"
+        mdbd.close()

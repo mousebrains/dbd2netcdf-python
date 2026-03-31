@@ -1,4 +1,9 @@
-"""DBD and MultiDBD classes — drop-in replacements for dbdreader, backed by _dbd_cpp."""
+"""DBD and MultiDBD classes — drop-in replacements for dbdreader, backed by _dbd_cpp.
+
+Parameter names use camelCase (e.g., ``cacheDir``, ``decimalLatLon``,
+``discardBadLatLon``) to match the original dbdreader library API for
+drop-in compatibility.
+"""
 
 from __future__ import annotations
 
