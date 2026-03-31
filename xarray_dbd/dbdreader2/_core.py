@@ -804,6 +804,7 @@ class MultiDBD:
                 cache_dir=cache,
                 to_keep=sorted(eng_needed),
                 skip_first_record=skip,
+                presorted=True,
             )
             names = result["sensor_names"]
             for i, name in enumerate(names):
@@ -816,6 +817,7 @@ class MultiDBD:
                 cache_dir=cache,
                 to_keep=sorted(sci_needed),
                 skip_first_record=skip,
+                presorted=True,
             )
             names = result["sensor_names"]
             for i, name in enumerate(names):
