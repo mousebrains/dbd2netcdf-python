@@ -64,6 +64,10 @@ def _filter_latlon(t, v, param, discard_bad):
 class DBD:
     """Read a single DBD file with a dbdreader-compatible interface.
 
+    .. note:: DBD instances are **not thread-safe**.  Each thread should
+       create its own instance.  Use multiprocessing for parallelism
+       (see ``xarray_dbd.cli.mkone`` for an example).
+
     Parameters
     ----------
     filename : str
@@ -363,6 +367,9 @@ class DBD:
 class MultiDBD:
     """Read multiple DBD files with a dbdreader-compatible interface.
 
+    .. note:: MultiDBD instances are **not thread-safe**.  Each thread
+       should create its own instance.
+
     Parameters
     ----------
     filenames : list of str or str or None
@@ -593,13 +600,13 @@ class MultiDBD:
                         r.append(numpy.interp(t, _t, _v, left=numpy.nan, right=numpy.nan))
                     except ValueError:
                         r.append(t * numpy.nan)
-                        logger.info("No valid data to interpolate for '%s'.", p)
+                        logger.warning("No valid data to interpolate for '%s'.", p)
                 else:
                     try:
                         ifun = ifun_factory(_t, _v)
                     except ValueError:
                         r.append(t * numpy.nan)
-                        logger.info("No valid data to interpolate for '%s'.", p)
+                        logger.warning("No valid data to interpolate for '%s'.", p)
                     else:
                         r.append(ifun(t))
 
@@ -677,11 +684,24 @@ class MultiDBD:
         return "ctd41cp"
 
     def set_time_limits(self, minTimeUTC=None, maxTimeUTC=None):  # noqa: N803
-        """Filter data by file open time. Triggers re-read of affected files."""
-        if minTimeUTC:
+        """Filter data by file open time. Triggers re-read of affected files.
+
+        Parameters
+        ----------
+        minTimeUTC, maxTimeUTC : str, int, float, or None
+            Time bounds as date strings (``"3 Mar 2024"`` or ``"3 Mar 2024 12:30"``)
+            or as numeric epoch seconds (UTC).
+        """
+        if minTimeUTC is not None:
             self.time_limits[0] = self._convert_seconds(minTimeUTC)
-        if maxTimeUTC:
+        if maxTimeUTC is not None:
             self.time_limits[1] = self._convert_seconds(maxTimeUTC)
+        if (
+            self.time_limits[0] is not None
+            and self.time_limits[1] is not None
+            and self.time_limits[0] > self.time_limits[1]
+        ):
+            logger.warning("minTimeUTC > maxTimeUTC; no files will match")
         self._apply_time_limits()
 
     def get_time_range(self, fmt="%d %b %Y %H:%M"):
@@ -917,6 +937,11 @@ class MultiDBD:
                 sources: list[DBD] = []
                 for chunk in src_chunks:
                     sources.extend(chunk)
+                # Sort by time for consistency with the non-source path
+                order = numpy.argsort(t_cat, kind="stable")
+                t_cat = t_cat[order]
+                v_cat = v_cat[order]
+                sources = [sources[i] for i in order]
             else:
                 t_cat = numpy.array([], dtype=numpy.float64)
                 v_cat = numpy.array([], dtype=numpy.float64)
@@ -985,15 +1010,18 @@ class MultiDBD:
         self._load(eng_files, sci_files)
 
     def _convert_seconds(self, timestring):
-        """Parse a time string in either short or long format."""
+        """Parse a time value: numeric epoch seconds or date string."""
+        if isinstance(timestring, (int, float)):
+            return float(timestring)
         t_epoch = None
-        with contextlib.suppress(ValueError, OverflowError):
+        with contextlib.suppress(ValueError, OverflowError, TypeError):
             t_epoch = strptimeToEpoch(timestring, "%d %b %Y")
-        with contextlib.suppress(ValueError, OverflowError):
+        with contextlib.suppress(ValueError, OverflowError, TypeError):
             t_epoch = strptimeToEpoch(timestring, "%d %b %Y %H:%M")
-        if not t_epoch:
+        if t_epoch is None:
             raise ValueError(
-                'Could not convert time string. Expect a format like "3 Mar" or "3 Mar 12:30".'
+                "Could not convert time value. Pass epoch seconds (numeric) or a "
+                'date string like "3 Mar 2024" or "3 Mar 2024 12:30".'
             )
         return t_epoch
 
@@ -1006,16 +1034,24 @@ class MultiDBD:
             return time_limits
         return [self._format_time(x, fmt) for x in time_limits]
 
+    # Slocum eng↔sci file type pairs: d↔e, s↔t, m↔n
+    _ENG_SCI_PAIRS = {"d": "e", "e": "d", "s": "t", "t": "s", "m": "n", "n": "m"}
+
     @staticmethod
     def _get_matching_fn(fn):
         """Get the complementary eng/sci filename for *fn*."""
-        sci_extensions = {".ebd", ".tbd", ".nbd", ".ecd", ".tcd", ".ncd"}
         _, extension = os.path.splitext(fn)
+        if len(extension) < 2:
+            return fn
+        type_char = extension[1]
+        paired = MultiDBD._ENG_SCI_PAIRS.get(type_char.lower())
+        if paired is None:
+            return fn
+        # Preserve original case
+        if type_char.isupper():
+            paired = paired.upper()
         ext_chars = list(extension)
-        if extension.lower() not in sci_extensions:
-            ext_chars[1] = chr(ord(extension[1]) + 1)
-        else:
-            ext_chars[1] = chr(ord(extension[1]) - 1)
+        ext_chars[1] = paired
         matching_ext = "".join(ext_chars)
         return fn.replace(extension, matching_ext)
 

@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.6] - 2026-03-30
+
+### Added
+
+- `--list-sensors` flag for `dbd2nc` CLI to print available sensors without conversion
+- `batch_size` parameter for `write_multi_dbd_netcdf()` (was hardcoded at 100)
+- Signal handling in `mkone` — Ctrl+C now terminates child processes cleanly
+- "Working with Glider Data" section in README (sensor discovery, time conversion, fill values)
+- Tests for `get_CTD_sync`, `determine_ctd_type`, `get_global_time_range`, file ordering, batch boundaries
+
+### Changed
+
+- `get_sync()` logs interpolation failures at WARNING level instead of INFO
+- Streaming writer logs summary when batches are skipped due to errors
+- `set_time_limits()` accepts numeric epoch seconds in addition to date strings
+- C++ `SensorsMap::setUpForData()` validates sensor byte sizes across files
+
+### Fixed
+
+- **Data loss in streaming writer**: removed Python-side double-skip at batch boundaries (C++ already handles `skip_first_record`)
+- **dbdreader2 file ordering**: pass `presorted=True` to `read_dbd_files` so C++ respects chronological order from `DBDList.sort()`
+- **mkone worker error propagation**: workers now exit non-zero on failure so parent detects errors
+- **`_get_with_source` time ordering**: results now sorted by time for consistency with normal `get()` path
+- **`sci_extensions` missing `.sbd`**: file pairing now recognizes `.sbd` as a science file type
+- **`set_time_limits` falsy check**: epoch time 0 no longer causes spurious ValueError
+- **inf-to-NaN for repeated values**: code=1 (repeat) now converts infinity consistently with code=2 (new value)
+- Removed unused `"j"` dimension from `DBDDataStore.get_dimensions()`
+- Fixed `--skip-first` help text (was stale after skip semantics change)
+- Fixed README: CLI command names, removed false wildcard `to_keep` claim
+
 ## [0.2.5] - 2026-03-30
 
 ### Added

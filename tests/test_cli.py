@@ -1028,6 +1028,55 @@ class TestCacheRun:
 
 
 @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestDbd2ncListSensors:
+    """Tests for dbd2nc --list-sensors flag."""
+
+    def test_list_sensors_prints_output(self, capsys):
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            list_sensors=True,
+            output=None,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=5,
+        )
+        rc = run(args)
+        assert rc == 0
+        captured = capsys.readouterr()
+        assert "m_present_time" in captured.out
+
+    def test_list_sensors_no_output_required(self):
+        from xarray_dbd.cli.dbd2nc import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            list_sensors=True,
+            output=None,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            compression=5,
+        )
+        rc = run(args)
+        assert rc == 0
+
+
+@pytest.mark.skipif(not has_test_data, reason="Test data not available")
 class TestDbd2ncRun:
     """In-process tests for dbd2nc.run()."""
 

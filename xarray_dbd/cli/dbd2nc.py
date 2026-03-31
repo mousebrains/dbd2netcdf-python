@@ -144,9 +144,13 @@ def run(args) -> int:
         cache_dir = args.cache
         if cache_dir is None and len(args.files) > 0:
             cache_dir = args.files[0].parent / "cache"
+        file_strs = [str(f) for f in args.files]
+        cache_str = str(cache_dir) if cache_dir else ""
         result = xdbd.scan_sensors(
-            [str(f) for f in args.files],
-            cache_dir=str(cache_dir) if cache_dir else "",
+            file_strs,
+            cache_dir=cache_str,
+            skip_missions=getattr(args, "skip_mission", None) or [],
+            keep_missions=getattr(args, "keep_mission", None) or [],
         )
         names = list(result["sensor_names"])
         units = list(result["sensor_units"])

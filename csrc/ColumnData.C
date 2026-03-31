@@ -123,7 +123,7 @@ ColumnDataResult read_columns(std::istream& is,
                 qKeep |= sensor.qCriteria();
                 const int oi = outIndex[i];
                 if (oi >= 0) {
-                    // Copy previous value into current row
+                    // Copy previous value into current row, converting inf to NaN
                     std::visit([nRows, oi](auto& col_vec, const auto& prev_vec) {
                         using T = typename std::decay_t<decltype(col_vec)>::value_type;
                         using PT = typename std::decay_t<decltype(prev_vec)>::value_type;
@@ -136,7 +136,11 @@ ColumnDataResult read_columns(std::istream& is,
                                 else
                                     col_vec.resize(col_vec.size() * 2, NAN);
                             }
-                            col_vec[nRows] = prev_vec[0];
+                            T val = prev_vec[0];
+                            if constexpr (std::is_floating_point_v<T>) {
+                                if (std::isinf(val)) val = NAN;
+                            }
+                            col_vec[nRows] = val;
                         }
                     }, columns[oi], prevValues[oi]);
                 }

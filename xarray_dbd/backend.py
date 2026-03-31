@@ -147,8 +147,8 @@ class DBDDataStore:
         }
 
     def get_dimensions(self) -> dict[str, int]:
-        """Return dimension sizes (i=records, j=1)."""
-        return {"i": self._n_records, "j": 1}
+        """Return dimension sizes."""
+        return {"i": self._n_records}
 
 
 class DBDBackendEntrypoint(BackendEntrypoint):
@@ -166,7 +166,7 @@ class DBDBackendEntrypoint(BackendEntrypoint):
         self,
         filename_or_obj: str | Path,
         *,
-        drop_variables: tuple[str, ...] | None = None,
+        drop_variables: list[str] | tuple[str, ...] | None = None,
         skip_first_record: bool = True,
         repair: bool = False,
         to_keep: list[str] | None = None,
@@ -465,6 +465,9 @@ def write_multi_dbd_netcdf(
         File sort order: ``"header_time"`` (default, sort by fileopen_time
         from each file's header), ``"lexicographic"``, or ``"none"``
         (preserve caller's order).
+    batch_size : int
+        Number of files to read per batch (default 100).  Smaller values
+        reduce peak memory; larger values reduce overhead.
 
     Returns
     -------
@@ -476,6 +479,8 @@ def write_multi_dbd_netcdf(
         raise ValueError(f"sort must be one of {_VALID_SORT_OPTIONS}, got {sort!r}")
     if skip_missions and keep_missions:
         raise ValueError("Cannot specify both skip_missions and keep_missions")
+    if batch_size < 1:
+        raise ValueError(f"batch_size must be >= 1, got {batch_size}")
 
     file_list = [str(Path(f)) for f in filenames]
 
