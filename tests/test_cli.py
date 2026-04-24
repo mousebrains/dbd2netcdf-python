@@ -239,7 +239,7 @@ def test_dbd2nc_skip_first():
         out_skip = Path(tmpdir) / "skip.nc"
         out_noskip = Path(tmpdir) / "noskip.nc"
 
-        for out, extra in [(out_skip, ["--skip-first"]), (out_noskip, [])]:
+        for out, extra in [(out_skip, ["--skip-first"]), (out_noskip, ["--keep-first"])]:
             result = subprocess.run(
                 [
                     sys.executable,
@@ -877,6 +877,9 @@ def _base_args(**overrides) -> Namespace:
         "mail_subject": None,
         "smtp_host": "localhost",
         "sort": "header_time",
+        # 2nc/2csv read args.keep_first (default: skip first record of every file).
+        # Tests that care about record counts should set keep_first explicitly.
+        "keep_first": False,
     }
     defaults.update(overrides)
     return Namespace(**defaults)
@@ -1079,6 +1082,40 @@ class TestDbd2ncListSensors:
 @pytest.mark.skipif(not has_test_data, reason="Test data not available")
 class TestDbd2ncRun:
     """In-process tests for dbd2nc.run()."""
+
+    def test_dbd2nc_removes_partial_output_on_error(self, tmp_path, monkeypatch):
+        """If the streaming write fails, dbd2nc unlinks the partial .nc file."""
+        from xarray_dbd.cli import dbd2nc
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:2]
+        if len(dcd_files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+
+        outfile = tmp_path / "out.nc"
+
+        def _boom(*args, **kwargs):
+            # Create a stub output file then raise, simulating a partial write
+            Path(args[1]).touch()
+            raise OSError("simulated streaming failure")
+
+        monkeypatch.setattr(dbd2nc.xdbd, "write_multi_dbd_netcdf", _boom)
+
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=True,
+            repair=False,
+            compression=5,
+        )
+        rc = dbd2nc.run(args)
+        assert rc == 1
+        assert not outfile.exists(), "Partial output file was not cleaned up"
 
     def test_dbd2nc_run_streaming(self, tmp_path):
         import xarray as xr
@@ -1586,6 +1623,7 @@ class TestCsvRunExtended:
                 skip_mission=None,
                 keep_mission=None,
                 skip_first=skip,
+                keep_first=not skip,
                 repair=False,
             )
             rc = run(args)

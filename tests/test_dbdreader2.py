@@ -204,16 +204,12 @@ class TestDBD:
         assert dbd.parameterUnits == {}
         assert not dbd.has_parameter("m_depth")
 
-    def test_default_cache_dir(self):
+    def test_default_cache_dir(self, monkeypatch):
         """When cacheDir is None, use DBDCache.CACHEDIR."""
-        old = DBDCache.CACHEDIR
-        try:
-            DBDCache.CACHEDIR = CACHE_DIR
-            dbd = DBD(_single_file())
-            assert len(dbd.parameterNames) > 0
-            dbd.close()
-        finally:
-            DBDCache.CACHEDIR = old
+        monkeypatch.setattr(DBDCache, "CACHEDIR", CACHE_DIR)
+        dbd = DBD(_single_file())
+        assert len(dbd.parameterNames) > 0
+        dbd.close()
 
     def test_cache_attributes(self):
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
@@ -1048,12 +1044,9 @@ class TestDbdError:
 
 class TestDBDPatternSelect:
     @pytest.fixture(autouse=True)
-    def _set_cachedir(self):
+    def _set_cachedir(self, monkeypatch):
         """Ensure DBDCache.CACHEDIR points to test cache for DBDPatternSelect."""
-        old = DBDCache.CACHEDIR
-        DBDCache.CACHEDIR = CACHE_DIR
-        yield
-        DBDCache.CACHEDIR = old
+        monkeypatch.setattr(DBDCache, "CACHEDIR", CACHE_DIR)
 
     def test_construction(self):
         ps = DBDPatternSelect(cacheDir=CACHE_DIR)
@@ -1133,21 +1126,15 @@ class TestDBDCache:
         with pytest.raises(DbdError):
             DBDCache.set_cachedir("/nonexistent/path/xyz")
 
-    def test_set_cachedir_valid(self):
-        old = DBDCache.CACHEDIR
-        try:
-            DBDCache.set_cachedir(CACHE_DIR)
-            assert DBDCache.CACHEDIR == CACHE_DIR
-        finally:
-            DBDCache.CACHEDIR = old
+    def test_set_cachedir_valid(self, monkeypatch):
+        monkeypatch.setattr(DBDCache, "CACHEDIR", DBDCache.CACHEDIR)
+        DBDCache.set_cachedir(CACHE_DIR)
+        assert DBDCache.CACHEDIR == CACHE_DIR
 
-    def test_init_with_explicit_cachedir(self):
-        old = DBDCache.CACHEDIR
-        try:
-            DBDCache(cachedir=CACHE_DIR)
-            assert DBDCache.CACHEDIR == CACHE_DIR
-        finally:
-            DBDCache.CACHEDIR = old
+    def test_init_with_explicit_cachedir(self, monkeypatch):
+        monkeypatch.setattr(DBDCache, "CACHEDIR", DBDCache.CACHEDIR)
+        DBDCache(cachedir=CACHE_DIR)
+        assert DBDCache.CACHEDIR == CACHE_DIR
 
 
 # ---------------------------------------------------------------------------

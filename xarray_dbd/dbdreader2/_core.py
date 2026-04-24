@@ -460,10 +460,6 @@ class MultiDBD:
         )
         valid_set = set(hdr_result["filenames"])
         self.mission_list = sorted(set(hdr_result["mission_names"]))
-        # Build {filename: mission_name} mapping for later use
-        self._file_missions = dict(
-            zip(hdr_result["filenames"], hdr_result["mission_names"], strict=True)
-        )
 
         # Build {filename: open_time_epoch} from scan_headers fileopen_times
         self._file_open_times: dict[str, float] = {}
@@ -497,7 +493,15 @@ class MultiDBD:
         self._sci_columns: dict[str, numpy.ndarray] = {}
         eng_files = [d.filename for d in eng_dbds]
         sci_files = [d.filename for d in sci_dbds]
-        self._load(eng_files, sci_files)
+        try:
+            self._load(eng_files, sci_files)
+        except Exception:
+            # Release per-file DBD objects (and any arrays they hold) before
+            # the exception propagates — otherwise the partial instance leaks.
+            for d in eng_dbds + sci_dbds:
+                with contextlib.suppress(Exception):
+                    d.close()
+            raise
 
         # Time limits
         self.time_limits_dataset: tuple = (None, None)

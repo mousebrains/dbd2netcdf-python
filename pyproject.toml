@@ -134,8 +134,15 @@ python_files = "test_*.py"
 [tool.cibuildwheel]
 build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*", "cp314-*"]
 skip = ["*-musllinux_i686", "*-win32"]
-test-skip = ["*-manylinux_*", "*-musllinux_*"]
-test-command = "python -c \"import xarray_dbd; print(xarray_dbd.__version__)\""
+# musllinux runs under Alpine — pytest wheels for recent CPython are spotty there,
+# so skip only it. manylinux IS tested.
+test-skip = ["*-musllinux_*"]
+test-requires = ["pytest", "scipy>=1.11"]
+# Ship tests/ and the sample dbd_files/ into the wheel-test sandbox so the C++
+# extension gets actually exercised (the old "import xarray_dbd" check would pass
+# on a broken binary).
+test-sources = ["tests", "dbd_files"]
+test-command = "pytest {project}/tests/test_cpp_backend.py -q"
 build-verbosity = 1
 
 [tool.cibuildwheel.linux]

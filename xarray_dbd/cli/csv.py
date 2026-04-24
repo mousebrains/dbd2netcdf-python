@@ -14,12 +14,31 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import pandas as pd
 
 from xarray_dbd._dbd_cpp import read_dbd_file, scan_sensors
 from xarray_dbd.backend import _sort_by_header_time
 from xarray_dbd.cli import logger
 from xarray_dbd.cli.dbd2nc import read_sensor_list
+
+
+def _format_column(col: np.ndarray, size: int) -> list[str]:
+    """Format a sensor column for CSV output; sentinel/NaN → empty cell."""
+    if size == 1:
+        strs = col.astype(str).tolist()
+        for i in np.where(col == -127)[0]:
+            strs[i] = ""
+        return strs
+    if size == 2:
+        strs = col.astype(str).tolist()
+        for i in np.where(col == -32768)[0]:
+            strs[i] = ""
+        return strs
+    # float32 (size=4) or float64 (size=8)
+    fmt = "%.7g" if size == 4 else "%.15g"
+    strs = [fmt % v for v in col]
+    for i in np.where(~np.isfinite(col))[0]:
+        strs[i] = ""
+    return strs
 
 
 def _add_common_args(parser) -> None:
@@ -67,11 +86,17 @@ def _add_common_args(parser) -> None:
         metavar="filename",
         help="Where to store the CSV (default: stdout)",
     )
-    parser.add_argument(
+    skip_grp = parser.add_mutually_exclusive_group()
+    skip_grp.add_argument(
         "-s",
         "--skip-first",
         action="store_true",
-        help="Skip first record in each file except the first",
+        help="Explicitly skip the first record of every file (this is the default)",
+    )
+    skip_grp.add_argument(
+        "--keep-first",
+        action="store_true",
+        help="Keep the first record of every file (default is to skip)",
     )
     parser.add_argument(
         "-r",
@@ -164,8 +189,7 @@ def run(args) -> int:
         logging.warning("No sensors found")
         return 0
 
-    # Fill values per dtype for NaN representation in CSV
-    fill_map = {1: np.int8(-127), 2: np.int16(-32768)}
+    valid_set = set(valid_files)
 
     fp: Any
     if args.output:
@@ -182,7 +206,7 @@ def run(args) -> int:
         file_count = 0
 
         for fn in file_list:
-            if fn not in valid_files:
+            if fn not in valid_set:
                 continue
             try:
                 result = read_dbd_file(
@@ -190,7 +214,7 @@ def run(args) -> int:
                     cache_dir=cache_str,
                     to_keep=to_keep or [],
                     criteria=criteria or [],
-                    skip_first_record=args.skip_first,
+                    skip_first_record=not args.keep_first,
                     repair=args.repair,
                 )
             except (OSError, RuntimeError, ValueError) as e:
@@ -202,28 +226,23 @@ def run(args) -> int:
                 file_count += 1
                 continue
 
-            file_names = list(result["sensor_names"])
-            file_cols = list(result["columns"])
-            file_col_map = dict(zip(file_names, file_cols, strict=True))
+            file_col_map = dict(zip(result["sensor_names"], result["columns"], strict=True))
 
-            # Build DataFrame with union columns in order
-            df_data = {}
+            # Format each union column as a list of strings (empty for missing
+            # sensors and for fill-value / non-finite cells).
+            formatted: list[list[str]] = []
             for si, name in enumerate(sensor_names):
                 col = file_col_map.get(name)
-                if col is not None:
-                    df_data[name] = col
+                if col is None:
+                    formatted.append([""] * n)
                 else:
-                    # Sensor not in this file — fill with sentinel
-                    size = sensor_sizes[si]
-                    fill = fill_map.get(size)
-                    if fill is not None:
-                        df_data[name] = np.full(n, fill, dtype=type(fill))
-                    else:
-                        df_data[name] = np.full(n, np.nan)
+                    formatted.append(_format_column(col, sensor_sizes[si]))
 
-            df = pd.DataFrame(df_data)
-            # NaN → empty string in CSV output
-            df.to_csv(fp, header=False, index=False, na_rep="")
+            # Write one line per record.
+            write = fp.write
+            for row in zip(*formatted, strict=True):
+                write(",".join(row))
+                write("\n")
 
             n_records += n
             file_count += 1
