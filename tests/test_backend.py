@@ -11,7 +11,31 @@ import xarray as xr
 from conftest import CACHE_DIR, DBD_DIR, skip_no_data
 
 import xarray_dbd as xdbd
-from xarray_dbd.backend import DBDDataStore
+from xarray_dbd.backend import DBDDataStore, _resolve_cache_dir
+
+
+class TestResolveCacheDir:
+    """Unit tests for _resolve_cache_dir (does not need sample data)."""
+
+    def test_explicit_missing_raises(self, tmp_path):
+        """An explicit cache_dir that doesn't exist → FileNotFoundError."""
+        missing = tmp_path / "nope"
+        with pytest.raises(FileNotFoundError, match="Cache directory not found"):
+            _resolve_cache_dir(str(missing), tmp_path)
+
+    def test_explicit_present_returns_path(self, tmp_path):
+        cache = tmp_path / "cache"
+        cache.mkdir()
+        assert _resolve_cache_dir(cache, tmp_path) == str(cache)
+
+    def test_none_with_missing_fallback_returns_empty(self, tmp_path):
+        """No user value + no <parent>/cache → empty string (no-cache mode)."""
+        assert _resolve_cache_dir(None, tmp_path) == ""
+
+    def test_none_with_present_fallback(self, tmp_path):
+        """<parent>/cache exists → returned."""
+        (tmp_path / "cache").mkdir()
+        assert _resolve_cache_dir(None, tmp_path) == str(tmp_path / "cache")
 
 
 @skip_no_data
@@ -240,6 +264,28 @@ class TestWriteMultiDbdNetcdf:
             assert (n_records, n_files) == (0, 0)
         finally:
             Path(tmpname).unlink(missing_ok=True)
+
+    def test_all_batches_fail_raises_oserror(self, tmp_path, monkeypatch):
+        """If every read_dbd_files call raises, the writer raises OSError."""
+        files = sorted(DBD_DIR.glob("*.dcd"))[:2]
+        if len(files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+        out = tmp_path / "all_fail.nc"
+
+        from xarray_dbd import backend as _backend
+
+        def _boom(*args, **kwargs):  # matches read_dbd_files signature
+            raise RuntimeError("simulated batch failure")
+
+        monkeypatch.setattr(_backend, "read_dbd_files", _boom)
+
+        with pytest.raises(OSError, match="No DBD records written"):
+            xdbd.write_multi_dbd_netcdf(
+                files,
+                out,
+                cache_dir=CACHE_DIR,
+                batch_size=1,  # force multiple batches
+            )
 
     def test_to_keep_filter(self):
         """to_keep limits output variables."""

@@ -131,8 +131,8 @@ ds = xdbd.open_multi_dbd_dataset(files, sort="none")
 The `--sort` flag is also available on all CLI commands:
 
 ```bash
-dbd2nc --sort lexicographic -C cache -o output.nc *.dbd
-mkone --sort none --output-prefix /path/to/output/ /path/to/raw/
+xdbd 2nc --sort lexicographic -C cache -o output.nc *.dbd
+xdbd mkone --sort none --output-prefix /path/to/output/ /path/to/raw/
 ```
 
 ### Advanced options
@@ -146,6 +146,10 @@ ds = xdbd.open_dbd_dataset(
     criteria=['m_present_time'],  # Sensors for record selection
 )
 ```
+
+The corresponding CLI flag on `xdbd 2nc` and `xdbd 2csv` is `--keep-first`
+(default is to skip the first record of every file, matching `mkone` and
+`dbdreader`). Use `--skip-first` to be explicit or `--keep-first` to invert.
 
 ## DBD File Format
 
@@ -525,7 +529,7 @@ print(df.describe())
 | Multiple files, < 1 GB | `xdbd.open_multi_dbd_dataset(files, to_keep=[...])` |
 | Multiple files, large dataset | `xdbd.write_multi_dbd_netcdf(files, "out.nc")` |
 | Interactive / Jupyter | `xdbd.MultiDBD(filenames=files)` with `.get()` (lazy) |
-| Batch processing 1000+ files | `mkone` CLI (multiprocessing) |
+| Batch processing 1000+ files | `xdbd mkone` CLI (multiprocessing) |
 | Drop-in dbdreader replacement | `import xarray_dbd.dbdreader2 as dbdreader` |
 
 ## Slocum File Types

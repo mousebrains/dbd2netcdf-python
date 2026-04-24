@@ -49,14 +49,14 @@ KnownBytes::KnownBytes(std::istream& is)
 
   if (tag != 's') {
     std::ostringstream oss;
-    oss << "Error known bytes cycle tag(0x" << std::hex << static_cast<int>(tag) << ") != 's'";
+    oss << "Error known bytes cycle tag(0x" << std::hex << (tag & 0xff) << ") != 's'";
     throw MyException(oss.str());
   }
 
 
   if (int8 != 'a') {
     std::ostringstream oss;
-    oss << "Error known bytes first byte(0x" << std::hex << static_cast<int>(int8)
+    oss << "Error known bytes first byte(0x" << std::hex << (int8 & 0xff)
         << ", '" << int8 << "') != 'a'";
     throw MyException(oss.str());
   }

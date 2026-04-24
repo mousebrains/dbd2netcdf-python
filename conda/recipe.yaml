@@ -6,7 +6,7 @@ schema_version: 1
 
 context:
   name: xarray-dbd
-  version: "0.1.0"
+  version: "0.2.6"
 
 package:
   name: ${{ name }}
@@ -37,6 +37,7 @@ requirements:
     - python >=3.10
     - numpy >=1.23,<3.0
     - xarray >=2023.6.0
+    - netcdf4 >=1.6
 
 tests:
   - python:
@@ -45,8 +46,9 @@ tests:
         - xarray_dbd._dbd_cpp
       pip_check: true
   - script:
-      - dbd2nc --help
-      - mkone --help
+      - xdbd --help
+      - xdbd 2nc --help
+      - xdbd mkone --help
 
 about:
   summary: Efficient xarray backend for reading Slocum ocean glider DBD files

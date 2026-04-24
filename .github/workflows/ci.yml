@@ -15,7 +15,7 @@ jobs:
   cpp-lint:
     name: C++ Static Analysis
     runs-on: ubuntu-latest
-    continue-on-error: true
+    # clang-tidy warnings are soft-reported below; compile errors now fail.
     steps:
       - uses: actions/checkout@v6
 
@@ -33,7 +33,11 @@ jobs:
           pip install pybind11[global] scikit-build-core cmake
 
       - name: Run clang-tidy via CMake build
+        # pipefail: without it, `tee` swallows a failing compile and the job
+        # would silently pass on build errors.
+        shell: bash
         run: |
+          set -euo pipefail
           cmake -B build -DENABLE_CLANG_TIDY=ON \
             -Dpybind11_DIR=$(python -c "import pybind11; print(pybind11.get_cmake_dir())")
           cmake --build build 2>&1 | tee clang-tidy-output.txt
@@ -46,6 +50,14 @@ jobs:
           else
             echo "No clang-tidy warnings found"
           fi
+
+      - name: Upload clang-tidy output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-output
+          path: clang-tidy-output.txt
+          retention-days: 14
 
   lint:
     name: Lint and Format
@@ -92,6 +104,12 @@ jobs:
 
       - name: Audit dependencies
         uses: pypa/gh-action-pip-audit@v1.1.0
+        with:
+          # CVE-2026-3219 is a flaw in pip itself (bundled with setup-python,
+          # not in this project's deps) and has no fix version yet. Revisit
+          # once a fixed pip is published so we can drop this override.
+          ignore-vulns: |
+            CVE-2026-3219
 
   test:
     name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}

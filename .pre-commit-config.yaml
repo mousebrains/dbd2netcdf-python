@@ -13,3 +13,14 @@ repos:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
       - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        # Match the CI invocation (xarray_dbd/ only; tests are linted, not typed).
+        files: ^xarray_dbd/
+        additional_dependencies:
+          - numpy>=1.23,<3.0
+          - xarray>=2023.6.0
+          - netCDF4>=1.6

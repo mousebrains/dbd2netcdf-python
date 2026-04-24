@@ -82,11 +82,17 @@ def _add_common_args(parser) -> None:
         action="store_true",
         help="Print available sensors and exit (no conversion)",
     )
-    parser.add_argument(
+    skip_grp = parser.add_mutually_exclusive_group()
+    skip_grp.add_argument(
         "-s",
         "--skip-first",
         action="store_true",
-        help="Skip first record in each file (default when omitted)",
+        help="Explicitly skip the first record of every file (this is the default)",
+    )
+    skip_grp.add_argument(
+        "--keep-first",
+        action="store_true",
+        help="Keep the first record of every file (default is to skip)",
     )
     parser.add_argument(
         "-r",
@@ -186,8 +192,13 @@ def run(args) -> int:
         logging.warning("Cache directory not found: %s", cache_dir)
         cache_dir = None
 
-    if args.output.exists() and not args.append:
+    output_existed = args.output.exists()
+    if output_existed and not args.append:
         logging.info("Overwriting existing file: %s", args.output)
+
+    # Default: skip first record of every file (matches mkone and dbdreader).
+    # --keep-first inverts; --skip-first is explicit (mutex group).
+    skip_first = not args.keep_first
 
     try:
         logging.info("Processing %d file(s)...", len(args.files))
@@ -196,7 +207,7 @@ def run(args) -> int:
             # Append mode: load everything into memory to concatenate
             ds = xdbd.open_multi_dbd_dataset(
                 args.files,
-                skip_first_record=args.skip_first,
+                skip_first_record=skip_first,
                 repair=args.repair,
                 to_keep=to_keep,
                 criteria=criteria,
@@ -237,7 +248,7 @@ def run(args) -> int:
                 n_records, n_files = xdbd.write_multi_dbd_netcdf(
                     args.files,
                     args.output,
-                    skip_first_record=args.skip_first,
+                    skip_first_record=skip_first,
                     repair=args.repair,
                     to_keep=to_keep,
                     criteria=criteria,
@@ -253,7 +264,7 @@ def run(args) -> int:
                 logging.info("Writing to %s (netCDF4 not available, using xarray)", args.output)
                 ds = xdbd.open_multi_dbd_dataset(
                     args.files,
-                    skip_first_record=args.skip_first,
+                    skip_first_record=skip_first,
                     repair=args.repair,
                     to_keep=to_keep,
                     criteria=criteria,
@@ -268,8 +279,15 @@ def run(args) -> int:
         return 0
 
     except (OSError, ValueError, RuntimeError) as e:
-        logging.error("Error: %s", e)
-        logging.debug("Traceback:", exc_info=True)
+        # If we created the output file this run, unlink it so a partial/empty
+        # NetCDF doesn't masquerade as a successful output on the next run.
+        if not args.append and not output_existed and args.output.exists():
+            try:
+                args.output.unlink()
+                logging.info("Removed incomplete output: %s", args.output)
+            except OSError as unlink_err:
+                logging.warning("Could not remove incomplete %s: %s", args.output, unlink_err)
+        logging.error("Error: %s", e, exc_info=True)
         return 1
 
 

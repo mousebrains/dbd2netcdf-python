@@ -204,16 +204,42 @@ class TestDBD:
         assert dbd.parameterUnits == {}
         assert not dbd.has_parameter("m_depth")
 
-    def test_default_cache_dir(self):
+    def test_multidbd_closes_dbds_on_load_error(self, monkeypatch):
+        """If MultiDBD._load raises, per-file DBDs get closed before re-raising."""
+        from xarray_dbd.dbdreader2 import MultiDBD
+        from xarray_dbd.dbdreader2._core import MultiDBD as _MultiDBD
+
+        closed: list[str] = []
+
+        def _failing_load(self, eng_files, sci_files):
+            for d in self.dbds["eng"] + self.dbds["sci"]:
+                orig = d.close
+
+                def _tracking_close(d=d, orig=orig):
+                    closed.append(d.filename)
+                    orig()
+
+                d.close = _tracking_close
+            raise RuntimeError("simulated _load failure")
+
+        monkeypatch.setattr(_MultiDBD, "_load", _failing_load)
+
+        fns = sorted(str(f) for f in DBD_DIR.glob("*.dcd"))[:2]
+        if len(fns) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+
+        with pytest.raises(RuntimeError, match="simulated _load failure"):
+            MultiDBD(filenames=fns, cacheDir=CACHE_DIR)
+
+        # Every file we registered should have been closed.
+        assert set(closed) == set(fns)
+
+    def test_default_cache_dir(self, monkeypatch):
         """When cacheDir is None, use DBDCache.CACHEDIR."""
-        old = DBDCache.CACHEDIR
-        try:
-            DBDCache.CACHEDIR = CACHE_DIR
-            dbd = DBD(_single_file())
-            assert len(dbd.parameterNames) > 0
-            dbd.close()
-        finally:
-            DBDCache.CACHEDIR = old
+        monkeypatch.setattr(DBDCache, "CACHEDIR", CACHE_DIR)
+        dbd = DBD(_single_file())
+        assert len(dbd.parameterNames) > 0
+        dbd.close()
 
     def test_cache_attributes(self):
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
@@ -790,7 +816,12 @@ class TestMultiDBD:
 # ---------------------------------------------------------------------------
 
 
-has_dbdreader = pytest.importorskip("dbdreader", reason="dbdreader not installed") is not None
+try:
+    import dbdreader  # noqa: F401
+
+    has_dbdreader = True
+except ImportError:
+    has_dbdreader = False
 
 
 @pytest.mark.skipif(not has_dbdreader, reason="dbdreader not installed")
@@ -1048,12 +1079,9 @@ class TestDbdError:
 
 class TestDBDPatternSelect:
     @pytest.fixture(autouse=True)
-    def _set_cachedir(self):
+    def _set_cachedir(self, monkeypatch):
         """Ensure DBDCache.CACHEDIR points to test cache for DBDPatternSelect."""
-        old = DBDCache.CACHEDIR
-        DBDCache.CACHEDIR = CACHE_DIR
-        yield
-        DBDCache.CACHEDIR = old
+        monkeypatch.setattr(DBDCache, "CACHEDIR", CACHE_DIR)
 
     def test_construction(self):
         ps = DBDPatternSelect(cacheDir=CACHE_DIR)
@@ -1133,21 +1161,15 @@ class TestDBDCache:
         with pytest.raises(DbdError):
             DBDCache.set_cachedir("/nonexistent/path/xyz")
 
-    def test_set_cachedir_valid(self):
-        old = DBDCache.CACHEDIR
-        try:
-            DBDCache.set_cachedir(CACHE_DIR)
-            assert DBDCache.CACHEDIR == CACHE_DIR
-        finally:
-            DBDCache.CACHEDIR = old
+    def test_set_cachedir_valid(self, monkeypatch):
+        monkeypatch.setattr(DBDCache, "CACHEDIR", DBDCache.CACHEDIR)
+        DBDCache.set_cachedir(CACHE_DIR)
+        assert DBDCache.CACHEDIR == CACHE_DIR
 
-    def test_init_with_explicit_cachedir(self):
-        old = DBDCache.CACHEDIR
-        try:
-            DBDCache(cachedir=CACHE_DIR)
-            assert DBDCache.CACHEDIR == CACHE_DIR
-        finally:
-            DBDCache.CACHEDIR = old
+    def test_init_with_explicit_cachedir(self, monkeypatch):
+        monkeypatch.setattr(DBDCache, "CACHEDIR", DBDCache.CACHEDIR)
+        DBDCache(cachedir=CACHE_DIR)
+        assert DBDCache.CACHEDIR == CACHE_DIR
 
 
 # ---------------------------------------------------------------------------

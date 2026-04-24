@@ -35,7 +35,6 @@ pybind11_add_module(_dbd_cpp
     csrc/SensorsMap.C
     csrc/KnownBytes.C
     csrc/Decompress.C
-    csrc/Data.C
     csrc/lz4.c
 )
 

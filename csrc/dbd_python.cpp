@@ -101,51 +101,58 @@ SingleFileResult parse_single_file(
         throw std::runtime_error("Cannot open file: " + filename);
     }
 
-    Header hdr(is, filename.c_str());
-    if (hdr.empty()) {
-        throw std::runtime_error("Empty or invalid header in " + filename);
+    // Prefix every downstream exception with the filename so callers can
+    // tell which file failed (Header/Sensors/KnownBytes/read_columns throws
+    // are otherwise filename-free).
+    try {
+        Header hdr(is, filename.c_str());
+        if (hdr.empty()) {
+            throw std::runtime_error("Empty or invalid header");
+        }
+
+        Sensors sensors(is, hdr);
+
+        if (sensors.empty() && !cache_dir.empty()) {
+            sensors.load(cache_dir, hdr);
+        } else if (!sensors.empty() && !cache_dir.empty()) {
+            sensors.dump(cache_dir);
+        }
+
+        if (sensors.empty()) {
+            throw std::runtime_error("No sensors found");
+        }
+
+        if (!to_keep.empty()) {
+            Sensors::tNames keepNames(to_keep.begin(), to_keep.end());
+            sensors.qKeep(keepNames);
+        }
+        if (!criteria.empty()) {
+            Sensors::tNames critNames(criteria.begin(), criteria.end());
+            sensors.qCriteria(critNames);
+        }
+
+        KnownBytes kb(is);
+        size_t nBytes = size_t{1024} * 1024;
+        ColumnDataResult result = read_columns(is, kb, sensors, repair, nBytes);
+
+        size_t start = 0;
+        size_t n_records = result.n_records;
+        if (skip_first_record && n_records > 0) {
+            start = 1;
+            n_records -= 1;
+        }
+
+        return {
+            std::move(result.columns),
+            std::move(result.sensor_info),
+            n_records,
+            start,
+            extract_header_fields(hdr),
+            filename,
+        };
+    } catch (const std::exception& e) {
+        throw std::runtime_error(filename + ": " + e.what());
     }
-
-    Sensors sensors(is, hdr);
-
-    if (sensors.empty() && !cache_dir.empty()) {
-        sensors.load(cache_dir, hdr);
-    } else if (!sensors.empty() && !cache_dir.empty()) {
-        sensors.dump(cache_dir);
-    }
-
-    if (sensors.empty()) {
-        throw std::runtime_error("No sensors found for " + filename);
-    }
-
-    if (!to_keep.empty()) {
-        Sensors::tNames keepNames(to_keep.begin(), to_keep.end());
-        sensors.qKeep(keepNames);
-    }
-    if (!criteria.empty()) {
-        Sensors::tNames critNames(criteria.begin(), criteria.end());
-        sensors.qCriteria(critNames);
-    }
-
-    KnownBytes kb(is);
-    size_t nBytes = size_t{1024} * 1024;
-    ColumnDataResult result = read_columns(is, kb, sensors, repair, nBytes);
-
-    size_t start = 0;
-    size_t n_records = result.n_records;
-    if (skip_first_record && n_records > 0) {
-        start = 1;
-        n_records -= 1;
-    }
-
-    return {
-        std::move(result.columns),
-        std::move(result.sensor_info),
-        n_records,
-        start,
-        extract_header_fields(hdr),
-        filename,
-    };
 }
 
 void grow_union_columns(std::vector<TypedColumn>& cols,

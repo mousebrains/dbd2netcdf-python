@@ -29,6 +29,23 @@ __all__ = [
 _VALID_SORT_OPTIONS = ("lexicographic", "header_time", "none")
 
 
+def _resolve_cache_dir(cache_dir: str | Path | None, fallback_parent: Path) -> str:
+    """Resolve a user-supplied ``cache_dir`` to a string for the C++ backend.
+
+    - ``cache_dir`` explicitly given but missing → :class:`FileNotFoundError`.
+    - ``cache_dir`` is None: fall back to ``fallback_parent / "cache"``; if that
+      directory doesn't exist, pass an empty string (unfactored-file path — the
+      C++ backend will treat this as "no cache available").
+    """
+    if cache_dir is not None:
+        p = Path(cache_dir)
+        if not p.is_dir():
+            raise FileNotFoundError(f"Cache directory not found: {p}")
+        return str(p)
+    fallback = fallback_parent / "cache"
+    return str(fallback) if fallback.is_dir() else ""
+
+
 def _parse_fileopen_time(time_str: str) -> float:
     """Parse a DBD fileopen_time header string to epoch seconds."""
     import time as _time
@@ -83,14 +100,13 @@ class DBDDataStore:
         """Parse a single DBD file via the C++ backend."""
         self.filename = Path(filename)
 
-        # Determine cache directory
-        cache_dir = str(self.filename.parent / "cache") if cache_dir is None else str(cache_dir)
+        cache_str = _resolve_cache_dir(cache_dir, self.filename.parent)
 
         # Call C++ backend
         try:
             result = read_dbd_file(
                 str(self.filename),
-                cache_dir=cache_dir,
+                cache_dir=cache_str,
                 to_keep=to_keep or [],
                 criteria=criteria or [],
                 skip_first_record=skip_first_record,
@@ -166,7 +182,7 @@ class DBDBackendEntrypoint(BackendEntrypoint):
         self,
         filename_or_obj: str | Path,
         *,
-        drop_variables: list[str] | tuple[str, ...] | None = None,
+        drop_variables: str | Iterable[str] | None = None,
         skip_first_record: bool = True,
         repair: bool = False,
         to_keep: list[str] | None = None,
@@ -211,7 +227,8 @@ class DBDBackendEntrypoint(BackendEntrypoint):
         attrs_dict = store.get_attrs()
 
         if drop_variables:
-            drop_set = set(drop_variables)
+            # Accept a single name, or any iterable of names (xarray's contract).
+            drop_set = {drop_variables} if isinstance(drop_variables, str) else set(drop_variables)
             vars_dict = {k: v for k, v in vars_dict.items() if k not in drop_set}
 
         return xr.Dataset(vars_dict, attrs=attrs_dict)
@@ -354,7 +371,7 @@ def open_multi_dbd_dataset(
     elif sort == "none":
         presorted = True
 
-    cache_str = str(cache_dir) if cache_dir else ""
+    cache_str = _resolve_cache_dir(cache_dir, Path(file_list[0]).parent)
 
     try:
         result = read_dbd_files(
@@ -504,7 +521,7 @@ def write_multi_dbd_netcdf(
     if not file_list:
         return 0, 0
 
-    cache_str = str(cache_dir) if cache_dir else ""
+    cache_str = _resolve_cache_dir(cache_dir, Path(file_list[0]).parent)
 
     # Pass 1: scan sensor union and valid files in one pass
     sensor_result = scan_sensors(
@@ -595,7 +612,13 @@ def write_multi_dbd_netcdf(
                     presorted=presorted,
                 )
             except (OSError, RuntimeError, ValueError) as e:
-                logger.warning("Error reading batch starting at index %d: %s", batch_idx, e)
+                logger.warning(
+                    "Error reading batch [%s ... %s] (%d file(s)): %s",
+                    batch_files[0],
+                    batch_files[-1],
+                    len(batch_files),
+                    e,
+                )
                 skipped_batches += 1
                 continue
 
@@ -634,6 +657,13 @@ def write_multi_dbd_netcdf(
                 skipped_batches,
                 total_files,
                 len(valid_files),
+            )
+
+        # Fail loudly if nothing was written. Callers (CLI) can then unlink the
+        # empty NetCDF rather than trusting a zero-row file.
+        if total_files == 0:
+            raise OSError(
+                f"No DBD records written to {output}: all {skipped_batches} batch(es) failed"
             )
 
     finally:

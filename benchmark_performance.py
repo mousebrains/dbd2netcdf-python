@@ -36,11 +36,11 @@ def measure_command(cmd, desc):
                 break
             time.sleep(0.01)
 
-        # Final check
+        # Final check — process may already have exited between the loop and here
         try:
             mem_info = process.memory_info()
             peak_memory = max(peak_memory, mem_info.rss)
-        except:
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError):
             pass
 
     except KeyboardInterrupt:

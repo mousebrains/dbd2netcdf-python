@@ -39,7 +39,9 @@ namespace {
 Header::Header(std::istream& is, const char *fn)
 {
   size_t cnt = 0;
-  for (tRecords::size_type nLines(10); mRecords.size() < nLines;) {
+  // 14 is the typical ASCII header length in DBD files; num_ascii_tags (if
+  // present in the first 14 lines) overrides this with the exact count.
+  for (tRecords::size_type nLines(14); mRecords.size() < nLines;) {
     std::string line;
     if (!getline(is, line)) {
       break;
@@ -94,19 +96,13 @@ Header::trim(std::string str)
 {
   const std::string whitespace(" \t\n");
 
-  std::string::size_type index(str.find_first_not_of(whitespace));
-
-  if (index != str.npos) {
-    str = str.substr(index);
+  const std::string::size_type first(str.find_first_not_of(whitespace));
+  if (first == str.npos) {
+    return std::string();
   }
 
-  index = str.find_last_not_of(whitespace);
-
-  if (index != str.npos) {
-    str = str.substr(0, index + 1);
-  }
-
-  return str;
+  const std::string::size_type last(str.find_last_not_of(whitespace));
+  return str.substr(first, last - first + 1);
 }
 
 void
@@ -133,6 +129,11 @@ Header::qProcessMission(const tMissions& toSkip,
   return toKeep.empty() || (toKeep.find(mission) != toKeep.end());
 }
 
+// Parse a DBD fileopen_time header value (format: "Day_Mon_DD_HH:MM:SS_YYYY")
+// to a UTC epoch seconds. Slocum gliders record fileopen_time in UTC, so we
+// use timegm / _mkgmtime rather than mktime (which would apply local TZ).
+// Returns time_t::max() on empty input or parse failure so the file sorts to
+// the end of a by-time file list.
 time_t
 Header::parseFileOpenTime(const std::string& timeStr)
 {

@@ -201,12 +201,13 @@ def _add_common_args(parser) -> None:
     grp = parser.add_argument_group(description="Processing options")
     grp.add_argument("--cache", type=Path, default="cache", help="Directory for sensor cache files")
     grp.add_argument("--repair", action="store_true", help="Should corrupted files be 'repaired'")
-    grp.add_argument(
+    skip_grp = grp.add_mutually_exclusive_group()
+    skip_grp.add_argument(
         "--keep-first",
         action="store_true",
         help="Should the first record not be discarded on all the files?",
     )
-    grp.add_argument(
+    skip_grp.add_argument(
         "--skip-first",
         action="store_true",
         help="Skip first record in each file (same as omitting --keep-first)",

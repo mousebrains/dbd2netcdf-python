@@ -14,6 +14,9 @@ from conftest import CACHE_DIR, CPP_REF_DIR, DBD_DIR, RAW_DIR
 import xarray_dbd as xdbd
 from xarray_dbd._dbd_cpp import read_dbd_file, read_dbd_files
 
+_HAS_DATA = (DBD_DIR / "01330000.dcd").exists()
+_skip_no_data = pytest.mark.skipif(not _HAS_DATA, reason="Test data not available")
+
 
 def test_import():
     """C++ module imports successfully."""
@@ -23,6 +26,7 @@ def test_import():
     assert callable(read_dbd_files)
 
 
+@_skip_no_data
 def test_read_single_compressed_file():
     """Read a compressed .dcd file."""
     f = str(DBD_DIR / "01330000.dcd")
@@ -38,6 +42,7 @@ def test_read_single_compressed_file():
         assert len(col) == n
 
 
+@_skip_no_data
 def test_column_dtypes():
     """Columns have correct native dtypes based on sensor size."""
     f = str(DBD_DIR / "01330000.dcd")
@@ -53,6 +58,7 @@ def test_column_dtypes():
         )
 
 
+@_skip_no_data
 def test_skip_first_record():
     """skip_first_record=True reduces record count by 1."""
     f = str(DBD_DIR / "01330000.dcd")
@@ -62,6 +68,7 @@ def test_skip_first_record():
     assert r_all["n_records"] == r_skip["n_records"] + 1
 
 
+@_skip_no_data
 def test_header_fields():
     """Header dict has expected keys."""
     f = str(DBD_DIR / "01330000.dcd")
@@ -73,6 +80,7 @@ def test_header_fields():
     assert "full_filename" in hdr
 
 
+@_skip_no_data
 def test_xr_open_dataset():
     """xr.open_dataset with engine='dbd' works."""
     f = DBD_DIR / "01330000.dcd"
