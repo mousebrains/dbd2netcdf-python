@@ -104,6 +104,12 @@ jobs:
 
       - name: Audit dependencies
         uses: pypa/gh-action-pip-audit@v1.1.0
+        with:
+          # CVE-2026-3219 is a flaw in pip itself (bundled with setup-python,
+          # not in this project's deps) and has no fix version yet. Revisit
+          # once a fixed pip is published so we can drop this override.
+          ignore-vulns: |
+            CVE-2026-3219
 
   test:
     name: Test Python ${{ matrix.python-version }} on ${{ matrix.os }}
