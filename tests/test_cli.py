@@ -1793,6 +1793,254 @@ class TestCsvRunExtended:
         assert len(lines) >= 4  # header + multiple data rows
 
 
+class TestCsvRunCoverage:
+    """Tests targeting remaining csv.run() gaps via monkeypatching."""
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_csv_run_cache_not_found(self, tmp_path):
+        """Non-existent --cache logs warning and falls back to no-cache (lines 154-155)."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        args = _base_args(
+            files=dcd_files,
+            cache=tmp_path / "does_not_exist",
+            output=tmp_path / "out.csv",
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        # Exercising the warning branch is what we care about; rc may vary
+        # depending on whether the file requires the missing cache.
+        run(args)
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_csv_run_lexicographic_sort(self, tmp_path):
+        """sort=lexicographic exercises file_list.sort() branch (line 159)."""
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:2]
+        if len(dcd_files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=tmp_path / "out.csv",
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+            sort="lexicographic",
+        )
+        assert run(args) == 0
+
+    def test_csv_run_scan_sensors_error(self, tmp_path, monkeypatch):
+        """scan_sensors raising → rc=1 (lines 174-176)."""
+        from xarray_dbd.cli import csv as csv_mod
+        from xarray_dbd.cli.csv import run
+
+        def boom(*a, **kw):
+            raise RuntimeError("simulated scan failure")
+
+        monkeypatch.setattr(csv_mod, "scan_sensors", boom)
+
+        fake = tmp_path / "fake.dbd"
+        fake.write_bytes(b"")
+        args = _base_args(
+            files=[fake],
+            cache=tmp_path,
+            output=None,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        assert run(args) == 1
+
+    def test_csv_run_no_sensors(self, tmp_path, monkeypatch):
+        """Empty sensor_names list → rc=0 with warning (lines 189-190)."""
+        from xarray_dbd.cli import csv as csv_mod
+        from xarray_dbd.cli.csv import run
+
+        monkeypatch.setattr(
+            csv_mod,
+            "scan_sensors",
+            lambda *a, **kw: {
+                "sensor_names": [],
+                "sensor_sizes": [],
+                "valid_files": [],
+            },
+        )
+        fake = tmp_path / "fake.dbd"
+        fake.write_bytes(b"")
+        args = _base_args(
+            files=[fake],
+            cache=tmp_path,
+            output=None,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        assert run(args) == 0
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_csv_run_invalid_file_skipped(self, tmp_path, monkeypatch):
+        """File in args but not in valid_files → continue (line 210)."""
+        from xarray_dbd.cli import csv as csv_mod
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:2]
+        if len(dcd_files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+
+        real_scan = csv_mod.scan_sensors
+
+        def drop_one(*a, **kw):
+            r = real_scan(*a, **kw)
+            return {
+                "sensor_names": r["sensor_names"],
+                "sensor_sizes": r["sensor_sizes"],
+                "valid_files": list(r["valid_files"])[:1],
+            }
+
+        monkeypatch.setattr(csv_mod, "scan_sensors", drop_one)
+
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=tmp_path / "out.csv",
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        assert run(args) == 0
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_csv_run_read_dbd_file_error(self, tmp_path, monkeypatch):
+        """read_dbd_file raising → log warning, continue (lines 220-222)."""
+        from xarray_dbd.cli import csv as csv_mod
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+
+        def boom(*a, **kw):
+            raise OSError("simulated read failure")
+
+        monkeypatch.setattr(csv_mod, "read_dbd_file", boom)
+
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=tmp_path / "out.csv",
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        assert run(args) == 0
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_csv_run_zero_records(self, tmp_path, monkeypatch):
+        """read_dbd_file returning n_records=0 → file_count++, continue (lines 226-227)."""
+        from xarray_dbd.cli import csv as csv_mod
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+
+        def empty_read(fn, **kw):
+            return {
+                "n_records": 0,
+                "sensor_names": [],
+                "columns": [],
+            }
+
+        monkeypatch.setattr(csv_mod, "read_dbd_file", empty_read)
+
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=tmp_path / "out.csv",
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        assert run(args) == 0
+
+    @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+    def test_csv_run_phantom_sensor(self, tmp_path, monkeypatch):
+        """Union sensor missing from a file → empty cells (line 237)."""
+        from xarray_dbd.cli import csv as csv_mod
+        from xarray_dbd.cli.csv import run
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:1]
+        real_scan = csv_mod.scan_sensors
+
+        def with_phantom(*a, **kw):
+            r = real_scan(*a, **kw)
+            return {
+                "sensor_names": list(r["sensor_names"]) + ["phantom_sensor"],
+                "sensor_sizes": list(r["sensor_sizes"]) + [4],
+                "valid_files": r["valid_files"],
+            }
+
+        monkeypatch.setattr(csv_mod, "scan_sensors", with_phantom)
+
+        outfile = tmp_path / "out.csv"
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=False,
+            repair=False,
+        )
+        assert run(args) == 0
+        lines = outfile.read_text(encoding="utf-8").strip().split("\n")
+        assert lines[0].endswith("phantom_sensor")
+        for line in lines[1:]:
+            assert line.endswith(","), f"Expected trailing empty cell, got: {line!r}"
+
+    def test_csv_main_entry_point(self, tmp_path, monkeypatch):
+        """main() parses argv and calls run() (lines 260-265)."""
+        from xarray_dbd.cli import csv as csv_mod
+
+        called: dict = {}
+
+        def fake_run(args):
+            called["files"] = args.files
+            return 0
+
+        monkeypatch.setattr(csv_mod, "run", fake_run)
+        fake = tmp_path / "fake.dbd"
+        fake.write_bytes(b"")
+        monkeypatch.setattr(sys, "argv", ["2csv", str(fake)])
+        with pytest.raises(SystemExit) as exc_info:
+            csv_mod.main()
+        assert exc_info.value.code == 0
+        assert called["files"] == [fake]
+
+
 # =============================================================================
 # Tier 2 — cli/dbd2nc.py additional tests
 # =============================================================================

@@ -131,6 +131,14 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 python_files = "test_*.py"
 
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
+
 [tool.cibuildwheel]
 build = ["cp310-*", "cp311-*", "cp312-*", "cp313-*", "cp314-*"]
 skip = ["*-musllinux_i686", "*-win32"]

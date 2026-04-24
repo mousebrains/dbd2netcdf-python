@@ -816,7 +816,12 @@ class TestMultiDBD:
 # ---------------------------------------------------------------------------
 
 
-has_dbdreader = pytest.importorskip("dbdreader", reason="dbdreader not installed") is not None
+try:
+    import dbdreader  # noqa: F401
+
+    has_dbdreader = True
+except ImportError:
+    has_dbdreader = False
 
 
 @pytest.mark.skipif(not has_dbdreader, reason="dbdreader not installed")
