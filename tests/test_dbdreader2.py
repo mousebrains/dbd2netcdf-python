@@ -204,6 +204,36 @@ class TestDBD:
         assert dbd.parameterUnits == {}
         assert not dbd.has_parameter("m_depth")
 
+    def test_multidbd_closes_dbds_on_load_error(self, monkeypatch):
+        """If MultiDBD._load raises, per-file DBDs get closed before re-raising."""
+        from xarray_dbd.dbdreader2 import MultiDBD
+        from xarray_dbd.dbdreader2._core import MultiDBD as _MultiDBD
+
+        closed: list[str] = []
+
+        def _failing_load(self, eng_files, sci_files):
+            for d in self.dbds["eng"] + self.dbds["sci"]:
+                orig = d.close
+
+                def _tracking_close(d=d, orig=orig):
+                    closed.append(d.filename)
+                    orig()
+
+                d.close = _tracking_close
+            raise RuntimeError("simulated _load failure")
+
+        monkeypatch.setattr(_MultiDBD, "_load", _failing_load)
+
+        fns = sorted(str(f) for f in DBD_DIR.glob("*.dcd"))[:2]
+        if len(fns) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+
+        with pytest.raises(RuntimeError, match="simulated _load failure"):
+            MultiDBD(filenames=fns, cacheDir=CACHE_DIR)
+
+        # Every file we registered should have been closed.
+        assert set(closed) == set(fns)
+
     def test_default_cache_dir(self, monkeypatch):
         """When cacheDir is None, use DBDCache.CACHEDIR."""
         monkeypatch.setattr(DBDCache, "CACHEDIR", CACHE_DIR)

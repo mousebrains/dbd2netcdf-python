@@ -1083,6 +1083,42 @@ class TestDbd2ncListSensors:
 class TestDbd2ncRun:
     """In-process tests for dbd2nc.run()."""
 
+    def test_dbd2nc_unlink_failure_logged(self, tmp_path, monkeypatch):
+        """If unlink of the partial output itself fails, we log a warning and still return 1."""
+        from xarray_dbd.cli import dbd2nc
+
+        dcd_files = sorted(DBD_DIR.glob("*.dcd"))[:2]
+        if len(dcd_files) < 2:
+            pytest.skip("Need at least 2 .dcd files")
+
+        outfile = tmp_path / "out.nc"
+
+        def _boom(*args, **kwargs):
+            Path(args[1]).touch()
+            raise OSError("simulated streaming failure")
+
+        def _unlink_boom(self):
+            raise OSError("simulated unlink failure")
+
+        monkeypatch.setattr(dbd2nc.xdbd, "write_multi_dbd_netcdf", _boom)
+        monkeypatch.setattr(Path, "unlink", _unlink_boom)
+
+        args = _base_args(
+            files=dcd_files,
+            cache=Path(CACHE_DIR),
+            output=outfile,
+            append=False,
+            sensors=None,
+            sensor_output=None,
+            skip_mission=None,
+            keep_mission=None,
+            skip_first=True,
+            repair=False,
+            compression=5,
+        )
+        rc = dbd2nc.run(args)
+        assert rc == 1
+
     def test_dbd2nc_removes_partial_output_on_error(self, tmp_path, monkeypatch):
         """If the streaming write fails, dbd2nc unlinks the partial .nc file."""
         from xarray_dbd.cli import dbd2nc
@@ -1265,6 +1301,29 @@ class TestDbd2ncRun:
 
 
 @pytest.mark.skipif(not has_test_data, reason="Test data not available")
+class TestFormatColumn:
+    """Unit tests for csv._format_column — no sample data needed."""
+
+    def test_int8_sentinel_to_empty(self):
+        from xarray_dbd.cli.csv import _format_column
+
+        col = np.array([1, -127, 3], dtype=np.int8)
+        assert _format_column(col, 1) == ["1", "", "3"]
+
+    def test_int16_sentinel_to_empty(self):
+        from xarray_dbd.cli.csv import _format_column
+
+        col = np.array([10, -32768, 30], dtype=np.int16)
+        assert _format_column(col, 2) == ["10", "", "30"]
+
+    def test_float_nan_to_empty(self):
+        from xarray_dbd.cli.csv import _format_column
+
+        col = np.array([1.5, np.nan, 3.0], dtype=np.float32)
+        out = _format_column(col, 4)
+        assert out[0] == "1.5" and out[1] == "" and out[2] == "3"
+
+
 class TestCsvRun:
     """In-process tests for csv.run()."""
 
