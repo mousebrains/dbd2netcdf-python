@@ -163,3 +163,6 @@ cache/
 !dbd_files/**
 !dbd_files/cache/
 !dbd_files/cache/**
+
+# Claude local state
+.claude
