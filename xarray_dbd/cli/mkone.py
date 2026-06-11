@@ -100,20 +100,6 @@ def extract_sensors(filenames: list[str], args: Namespace) -> list[str]:
     return list(all_sensors)
 
 
-def process_all(
-    filenames: list[str], args: Namespace, suffix: str, sensors_filename: str | None = None
-) -> None:
-    """Process files into a NetCDF"""
-    filenames = list(filenames)  # ensure it is a list
-    if not filenames:
-        return  # Nothing to do
-
-    filenames.sort()  # Sort for consistent processing order
-
-    ofn = args.output_prefix + suffix  # Output filename
-    process_files(ofn, filenames, args, sensors_filename)
-
-
 def write_sensors(sensors: set[str], ofn: str) -> str:
     odir = os.path.dirname(ofn)
     if odir and not os.path.isdir(odir):
@@ -124,29 +110,6 @@ def write_sensors(sensors: set[str], ofn: str) -> str:
         fp.write("\n".join(sorted(sensors)))
         fp.write("\n")
     return ofn
-
-
-def process_dbd(filenames: list[str], args: Namespace) -> None:
-    """Process flight Dinkum Binary files"""
-    filenames = list(filenames)
-    if not filenames:
-        return  # Nothing to do
-
-    all_sensors = set(extract_sensors(filenames, args))
-    dbd_sensors = {x for x in all_sensors if x.startswith(("m_", "c_"))}
-    sci_sensors = {x for x in all_sensors if x.startswith("sci_")}
-    other_sensors = all_sensors.difference(dbd_sensors).difference(sci_sensors)
-    sci_sensors.add("m_present_time")
-    other_sensors.add("m_present_time")
-
-    write_sensors(all_sensors, args.output_prefix + "dbd.all.sensors")
-    dbd_fn = write_sensors(dbd_sensors, args.output_prefix + "dbd.sensors")
-    sci_fn = write_sensors(sci_sensors, args.output_prefix + "dbd.sci.sensors")
-    other_fn = write_sensors(other_sensors, args.output_prefix + "dbd.other.sensors")
-
-    process_all(filenames, args, "dbd.nc", dbd_fn)
-    process_all(filenames, args, "dbd.sci.nc", sci_fn)
-    process_all(filenames, args, "dbd.other.nc", other_fn)
 
 
 def discover_files(paths: list[str]) -> dict[str, list[str]]:

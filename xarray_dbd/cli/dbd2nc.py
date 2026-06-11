@@ -60,6 +60,7 @@ def _add_common_args(parser) -> None:
         "-m",
         "--skip-mission",
         action="append",
+        default=[],
         metavar="mission",
         help="Mission to skip (can be repeated)",
     )
@@ -67,6 +68,7 @@ def _add_common_args(parser) -> None:
         "-M",
         "--keep-mission",
         action="append",
+        default=[],
         metavar="mission",
         help="Mission to keep (can be repeated)",
     )
