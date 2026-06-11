@@ -150,7 +150,9 @@ test-requires = ["pytest", "scipy>=1.11"]
 # extension gets actually exercised (the old "import xarray_dbd" check would pass
 # on a broken binary).
 test-sources = ["tests", "dbd_files"]
-test-command = "pytest {project}/tests/test_cpp_backend.py -q"
+# Relative path (not {project}) so the copied test-sources are what's tested,
+# per the cibuildwheel docs for test-sources.
+test-command = "pytest tests/test_cpp_backend.py -q"
 build-verbosity = 1
 
 [tool.cibuildwheel.linux]

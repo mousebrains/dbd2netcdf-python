@@ -322,6 +322,11 @@ class DBD:
                 v[_is_fill(self._columns[param])] = numpy.nan
             else:
                 v = v.astype(numpy.float64)
+            # Matching dbdreader: discardBadLatLon is incompatible with
+            # return_nans (it would change the array length), but decimal
+            # conversion still applies.
+            if decimal_ll and param in LATLON_PARAMS:
+                v = _convertToDecimal(v)
             return t, v
 
         # Filter out fill/NaN values
@@ -879,6 +884,11 @@ class MultiDBD:
         if return_nans:
             vf = v.astype(numpy.float64)
             vf[_is_fill(v)] = numpy.nan
+            # Matching dbdreader: discardBadLatLon is incompatible with
+            # return_nans (it would change the array length), but decimal
+            # conversion still applies.
+            if decimal_ll and param in LATLON_PARAMS:
+                vf = _convertToDecimal(vf)
             return t_all.copy(), vf
 
         fill_mask = _is_fill(v)

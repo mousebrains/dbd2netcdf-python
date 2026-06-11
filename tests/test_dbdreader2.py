@@ -297,6 +297,19 @@ class TestDBD:
         assert len(t_all) >= len(t_keep)
         dbd.close()
 
+    def test_get_latlon_return_nans_decimal(self):
+        """return_nans=True still applies decimalLatLon conversion (matching dbdreader)."""
+        dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
+        if not dbd.has_parameter("m_lat"):
+            dbd.close()
+            pytest.skip("No m_lat in test file")
+        t_dec, v_dec = dbd.get("m_lat", return_nans=True)
+        t_raw, v_raw = dbd.get("m_lat", return_nans=True, decimalLatLon=False)
+        assert len(t_dec) == len(t_raw)
+        assert np.isfinite(v_raw).any()
+        np.testing.assert_allclose(v_dec, toDec(v_raw), rtol=1e-12, equal_nan=True)
+        dbd.close()
+
     def test_get_list_deprecated(self):
         """get_list is a deprecated wrapper around get."""
         dbd = DBD(_single_file(), cacheDir=CACHE_DIR)
@@ -660,6 +673,19 @@ class TestMultiDBD:
         assert np.max(np.abs(v_raw)) > np.max(np.abs(v_dec))
         mdbd.close()
 
+    def test_get_latlon_return_nans_decimal_multi(self):
+        """MultiDBD return_nans=True still applies decimalLatLon (matching dbdreader)."""
+        mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
+        if not mdbd.has_parameter("m_lat"):
+            mdbd.close()
+            pytest.skip("No m_lat in test data")
+        t_dec, v_dec = mdbd.get("m_lat", return_nans=True)
+        t_raw, v_raw = mdbd.get("m_lat", return_nans=True, decimalLatLon=False)
+        assert len(t_dec) == len(t_raw)
+        assert np.isfinite(v_raw).any()
+        np.testing.assert_allclose(v_dec, toDec(v_raw), rtol=1e-12, equal_nan=True)
+        mdbd.close()
+
     def test_get_sync_list_as_second_arg_multi(self):
         """MultiDBD.get_sync accepts a list as second argument."""
         mdbd = MultiDBD(filenames=_all_files(), cacheDir=CACHE_DIR)
@@ -860,6 +886,29 @@ class TestCrossValidation:
             assert len(xa) == len(da)
             mask = np.isfinite(xa) & np.isfinite(da)
             np.testing.assert_allclose(xa[mask], da[mask], rtol=1e-6)
+
+        xdbd_dbd.close()
+        dbdr_dbd.close()
+
+    def test_get_latlon_return_nans_match(self):
+        """return_nans=True lat/lon values (decimal-converted) match dbdreader."""
+        import dbdreader
+
+        filename = _single_file()
+        xdbd_dbd = DBD(filename, cacheDir=CACHE_DIR)
+        dbdr_dbd = dbdreader.DBD(filename, cacheDir=CACHE_DIR)
+        if not xdbd_dbd.has_parameter("m_lat"):
+            xdbd_dbd.close()
+            dbdr_dbd.close()
+            pytest.skip("No m_lat in test file")
+
+        xt, xv = xdbd_dbd.get("m_lat", return_nans=True)
+        dt, dv = dbdr_dbd.get("m_lat", return_nans=True)
+
+        assert len(xt) == len(dt), f"length mismatch: {len(xt)} vs {len(dt)}"
+        np.testing.assert_allclose(xt, dt, rtol=1e-10)
+        np.testing.assert_array_equal(np.isnan(xv), np.isnan(dv))
+        np.testing.assert_allclose(xv, dv, rtol=1e-10, equal_nan=True)
 
         xdbd_dbd.close()
         dbdr_dbd.close()

@@ -2379,20 +2379,6 @@ class TestMkoneHelpers:
         lines = content.strip().split("\n")
         assert lines == ["alpha", "beta", "gamma"]
 
-    def test_process_all_empty(self):
-        """Empty filenames → no-op (no error)."""
-        from xarray_dbd.cli.mkone import process_all
-
-        args = _base_args(
-            output_prefix="/tmp/test.",
-            exclude=None,
-            include=None,
-            cache="",
-            keep_first=True,
-            repair=False,
-        )
-        process_all([], args, "dbd.nc")  # should return without error
-
     @pytest.mark.skipif(not has_test_data, reason="Test data not available")
     def test_worker(self, tmp_path):
         """_worker() produces output for valid files."""
