@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **dbdreader2 `return_nans=True` skipped decimal lat/lon conversion**: `DBD.get()` and `MultiDBD.get()` returned raw NMEA coordinates for lat/lon parameters when `return_nans=True`, even with `decimalLatLon=True` (the default). Conversion is now applied, matching dbdreader. (`discardBadLatLon` remains inapplicable with `return_nans`, also matching dbdreader.)
+
+### Changed
+
+- `--skip-mission`/`--keep-mission` in `2nc` and `2csv` now default to `[]` instead of `None`, matching `sensors`
+- cibuildwheel `test-command` uses a relative path so the copied `test-sources` are what's tested (per cibuildwheel docs)
+- Removed dead `process_dbd()`/`process_all()` from `mkone` (superseded by the inline partitioning in `run()` when output-file workers were parallelized)
+
+## [0.2.7] - 2026-04-24
+
+### Fixed
+
+- **`2nc` and `2csv` did not skip the first record by default**, contradicting their help text, `mkone`, and dbdreader. Both commands now use a `--skip-first`/`--keep-first` mutually exclusive group and default to skip; `mkone`'s pair is mutex-grouped too
+- `2nc` unlinks the partial `.nc` file when a streaming write fails, so a zero-record file no longer masquerades as success
+- `write_multi_dbd_netcdf()` raises `OSError` when every batch fails instead of silently returning `(0, n_files)`
+- `MultiDBD.__init__` closes per-file DBD objects if loading raises
+- `DBDBackendEntrypoint.open_dataset` accepts a single string for `drop_variables`
+- conda recipe: version updated from stale 0.1.0, test commands use `xdbd` subcommands, missing `netcdf4` runtime dependency added
+
+### Changed
+
+- C++ sources synced with upstream dbd2netcdf (three rounds); dropped unused `Data.C`/`Data.H`
+- Per-file parse errors from the C++ extension now include the offending filename
+- `_resolve_cache_dir()` centralizes cache-dir resolution: explicit-but-missing raises `FileNotFoundError`, implicit-missing falls back to the unfactored-file flow
+- `2csv` dropped pandas from the hot path (same CSV output, fewer allocations)
+- README and `examples/using_cli_tools.sh` rewritten for `xdbd 2nc`/`xdbd mkone` (standalone `dbd2nc`/`mkone` entry points don't exist)
+
+### CI / Packaging
+
+- cibuildwheel wheel tests upgraded from an import-only smoke test to running `test_cpp_backend.py` with `tests/` and `dbd_files/` shipped via `test-sources`; manylinux tests no longer skipped
+- CI `cpp-lint` job now fails on compile errors (`set -euo pipefail`; previously `tee` masked the exit code); clang-tidy output uploaded as an artifact
+- pre-commit gained a mypy hook to match CI
+- pip-audit ignores CVE-2026-3219 (a pip-itself flaw with no fixed release yet, not a project dependency)
+- Test coverage: `csv.py` to 100% file coverage; dbdreader2 test module no longer skips entirely in CI when dbdreader is absent
+
 ## [0.2.6] - 2026-03-30
 
 ### Added

@@ -16,25 +16,29 @@ pip install -e .
 pytest
 pytest tests/test_cpp_backend.py         # C++ backend tests
 
-# Lint and format (ruff is configured in pyproject.toml, line-length=100)
-ruff check xarray_dbd/ *.py
-ruff format xarray_dbd/ *.py
+# Lint, format, and type-check (matches CI; ruff configured in pyproject.toml, line-length=100)
+ruff check xarray_dbd/ tests/
+ruff format --check xarray_dbd/ tests/
+python3 -m mypy xarray_dbd/
 
-# Convert single/multiple DBD files to NetCDF
-dbd2nc -C cache -o output.nc input.dbd
-dbd2nc -C cache -o output.nc --skip-first *.dcd
+# Convert single/multiple DBD files to NetCDF (skipping each file's first record is the default)
+xdbd 2nc -C cache -o output.nc input.dbd
+xdbd 2nc -C cache -o output.nc --keep-first *.dcd
 
 # Sort by header timestamp (for TWR-style filenames with unpadded segments)
-dbd2nc --sort header_time -C cache -o output.nc *.dbd
+xdbd 2nc --sort header_time -C cache -o output.nc *.dbd
 
 # List available sensors without converting
-dbd2nc --list-sensors -C cache *.dbd
+xdbd 2nc --list-sensors -C cache *.dbd
+
+# Convert to CSV
+xdbd 2csv -C cache -o output.csv *.dbd
 
 # Batch process directories (walks recursively for *.?[bc]d files)
-mkone --output-prefix /path/to/output/ --cache /path/to/cache /path/to/raw/
+xdbd mkone --output-prefix /path/to/output/ --cache /path/to/cache /path/to/raw/
 
 # Test with sample data (if dbd_files/ directory exists)
-dbd2nc -C dbd_files/cache -o /tmp/test.nc dbd_files/*.dcd
+xdbd 2nc -C dbd_files/cache -o /tmp/test.nc dbd_files/*.dcd
 ```
 
 ## Architecture
@@ -70,7 +74,9 @@ The `_dbd_cpp` module is built from C++ sources in `csrc/`, copied from `/Users/
 ### Python Layer (`xarray_dbd/`)
 
 - `__init__.py` — Exports `read_dbd_file`, `read_dbd_files`, `open_dbd_dataset`, `open_multi_dbd_dataset`
-- `backend.py` — `DBDDataStore`, `DBDBackendEntrypoint` for xarray engine integration
+- `backend.py` — `DBDDataStore`, `DBDBackendEntrypoint` for xarray engine integration, `write_multi_dbd_netcdf` streaming writer
+- `cli/` — `xdbd` entry point: `main.py` (subcommand router), `dbd2nc.py` (`2nc`), `csv.py` (`2csv`), `mkone.py`, `sensors.py`, `missions.py`, `cache.py`
+- `dbdreader2/` — drop-in replacement for Lucas Merckelbach's dbdreader API (`DBD`, `MultiDBD`, `DBDList`, `DBDPatternSelect`), backed by the C++ extension
 
 ### Sensor Cache System
 
@@ -82,7 +88,7 @@ Cache lookup: try `{crc}.cac` first, then `{crc}.ccc`. The reader generates `.ca
 
 ### mkone Batch Processing
 
-Discovers files via `os.walk()` with regex `r"[.]" + key + r"[bc]d$"` for keys `d/e/m/n/s/t`. Type `d` (flight data) gets special handling: sensors are partitioned into dbd/sci/other subsets and written as three separate NetCDF files. All types are processed sequentially (not threaded) to avoid memory exhaustion.
+Discovers files via `os.walk()` with regex `r"[.]" + key + r"[bc]d$"` for keys `d/e/m/n/s/t`. Type `d` (flight data) gets special handling: sensors are partitioned into dbd/sci/other subsets and written as three separate NetCDF files. Each output file is written by its own `multiprocessing.Process` worker; SIGINT/SIGTERM terminate the children.
 
 ### DBD File Format
 
